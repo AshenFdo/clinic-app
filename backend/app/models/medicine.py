@@ -1,0 +1,23 @@
+from sqlalchemy import String, Integer, Numeric, Column, Date
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from app.models.base import Base
+
+class Medicine(Base):
+    __tablename__ = "Medicine"
+
+    """ 
+    Medicine model representing the medicines available in the clinic.
+    Attributes:
+        medicine_id (UUID): Unique identifier for the medicine.
+        name (String): Name of the medicine.
+        category (String): Category of the medicine (e.g., Antibiotic, Painkiller, etc.).
+        description (String): Description of the medicine.
+        quantity (Numeric): Quantity of the medicine available in stock.
+    """
+
+    medicine_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    quantity = Column(Numeric, nullable=False)
