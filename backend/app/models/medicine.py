@@ -1,11 +1,10 @@
-from sqlalchemy import String, Integer, Numeric, Column, Date
+from sqlalchemy import String, Integer, Numeric, Column, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from app.models.base import Base
+from sqlalchemy.orm import relationship
 
 class Medicine(Base):
-    __tablename__ = "Medicine"
-
     """ 
     Medicine model representing the medicines available in the clinic.
     Attributes:
@@ -15,9 +14,13 @@ class Medicine(Base):
         description (String): Description of the medicine.
         quantity (Numeric): Quantity of the medicine available in stock.
     """
+    __tablename__ = "Medicine"
 
     medicine_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     category = Column(String, nullable=False)
     description = Column(String, nullable=False)
     quantity = Column(Numeric, nullable=False)
+
+    # Relationships
+    prescription_items = relationship("PrescriptionItem", back_populates="medicine")

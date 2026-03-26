@@ -1,13 +1,12 @@
-from sqlalchemy import String, Integer, Numeric, Column, Date
+from sqlalchemy import String, Integer, Numeric, Column, Date,ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-import uuid
 from app.models.base import Base
+from sqlalchemy.orm import relationship
+
 
 
 
 class Doctor(Base):
-    __tablename__ = "Doctor"
-
     """
     Doctor model representing the doctors in the system.
     Attributes:
@@ -16,8 +15,15 @@ class Doctor(Base):
         specialty (String): Medical specialty of the doctor.
         years_of_experience (Integer): Number of years of experience the doctor has.
     """
+    __tablename__ = "Doctor"
 
-    doctor_id = Column(UUID(as_uuid=True), primary_key=True)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("User.user_id"), primary_key=True)
     professional_bio = Column(String, nullable=False)
     specialty = Column(String, nullable=False)
     years_of_experience = Column(Integer, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="doctor")
+    available_slots = relationship("AvailableSlots", back_populates="doctor")
+    appointments = relationship("Appointment", back_populates="doctor")
+    prescriptions = relationship("Prescription", back_populates="doctor")
