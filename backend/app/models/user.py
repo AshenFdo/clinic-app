@@ -9,12 +9,11 @@ class User(Base):
     Attributes:
         user_id (UUID): Unique identifier for the user.
         full_name (String): Full name of the user.
-        email (String): Email address of the user, must be unique.
+        email (String): Email address of the user.It must be unique.
         gender (String): Gender of the user.(Male, Female, Other)
         mobile_no (String): Mobile number of the user.
         profile_image_url (String): URL of the user's profile image.
         date_of_birth (Date): Date of birth of the user.
-        password (String): Hashed password of the user.
         role (String): Role of the user (Admin, Doctor, Nurse, Patient).
         is_active (Boolean): Status of the user (True, False).
        
@@ -29,7 +28,6 @@ class User(Base):
     mobile_no = Column(String, nullable=False)
     profile_image_url = Column(String, nullable=True)
     date_of_birth = Column(Date, nullable=False)
-    password = Column(String, nullable=False)
     role = Column(String, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
 

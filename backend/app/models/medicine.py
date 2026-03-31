@@ -21,6 +21,7 @@ class Medicine(Base):
     category = Column(String, nullable=False)
     description = Column(String, nullable=False)
     quantity = Column(Numeric, nullable=False)
+    is_active = Column(String, nullable=False, default="Active")
 
     # Relationships
     prescription_items = relationship("PrescriptionItem", back_populates="medicine")

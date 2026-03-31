@@ -8,7 +8,7 @@ from sqlalchemy.orm import relationship
 
 class Doctor(Base):
     """
-    Doctor model representing the doctors in the system.
+    Doctor model representing the doctor table  in the system.
     Attributes:
         doctor_id (UUID): Unique identifier for the doctor.
         professional_bio (String): Professional biography of the doctor.

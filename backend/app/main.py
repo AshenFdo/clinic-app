@@ -1,7 +1,9 @@
 # backend/app/main.py
 
 from fastapi import FastAPI
+import app.models
 from app.routers import user
+from app.routers import auth
 
 app = FastAPI(
     title="Clinic Management System",
@@ -10,6 +12,7 @@ app = FastAPI(
     )
 
 app.include_router(user.router)
+app.include_router(auth.router)
 
 @app.get("/")
 async def root():

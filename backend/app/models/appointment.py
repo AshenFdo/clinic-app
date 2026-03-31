@@ -1,5 +1,3 @@
-import re
-
 from sqlalchemy import Boolean, String,  Column, Date,ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -9,7 +7,7 @@ from sqlalchemy.orm import relationship
 
 class Appointment(Base):
     """
-    Appointment model representing the appointments in the system.
+    Appointment model representing the doctor appointments in the system.
     Attributes:
         appointment_id (UUID): Unique identifier for the appointment.
         doctor_id (UUID): Unique identifier for the doctor.

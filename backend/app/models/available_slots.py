@@ -32,3 +32,4 @@ class AvailableSlots(Base):
     appointments = relationship("Appointment", back_populates="available_slots")
 
 
+

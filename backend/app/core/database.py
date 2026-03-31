@@ -1,10 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine,async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.engine import make_url
 from app.core.config import settings
 
 
+#---------------------------------------------------
+# Database setup with SQLAlchemy AsyncIO
+#---------------------------------------------------
+
 def _get_async_database_url(url: str) -> str:
-    # Force async PostgreSQL driver to avoid fallback to psycopg2.
+    '''Force async PostgreSQL driver to avoid fallback to psycopg2.'''
+
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+asyncpg://", 1)
     return url
@@ -21,11 +26,15 @@ def _validate_database_url(url: str) -> None:
         )
 
 
-_validate_database_url(settings.DATABASE_URL)
+DATABASE_URL = _get_async_database_url(settings.DATABASE_URL)
+_validate_database_url(DATABASE_URL)
 
 
+#---------------------------------------------------
+# Async Database Engine
+#---------------------------------------------------
 engine = create_async_engine(
-    _get_async_database_url(settings.DATABASE_URL),
+    DATABASE_URL,
     echo=settings.DEBUG,
     future=True
 )

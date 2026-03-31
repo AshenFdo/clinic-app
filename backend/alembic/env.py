@@ -14,12 +14,12 @@ load_dotenv()
 from app.models.base import Base
 from app.models.user import User
 from app.models.appointment import Appointment
-from app.models.available_slots import Available_Slots
+from app.models.available_slots import AvailableSlots
 from app.models.doctor import Doctor
-from app.models.medi_history import Medi_History
+from app.models.medi_history import MedicalHistory
 from app.models.medicine import Medicine
 from app.models.patient import Patient
-from app.models.prescription_item import Prescription_Item
+from app.models.prescription_item import PrescriptionItem
 from app.models.prescription import Prescription
 from app.models.room import Room
 from app.models.timeslot import TimeSlot

@@ -1,16 +1,29 @@
 from typing import AsyncGenerator
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
-from app.core.config import settings
-from jose import JWTError, jwt
+from jose import JWTError
+from app.core.security import verify_supabase_token
+from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+# Define the HTTP Bearer scheme for token authentication
+bearer_scheme  = HTTPBearer()
 
 
-# Dependency 1: gives a route a database session, then closes it when done
+# ---------------------------------------------------
+# Dependency to get DB session for each request
+# ---------------------------------------------------
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Provide one AsyncSession per request.
+
+    The session is yielded to route/service code, then:
+    - commit runs if request handling finishes without error
+    - rollback runs if an exception is raised
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -20,44 +33,67 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-# Dependency 2: reads the JWT token and returns the current logged-in user's ID
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+# ---------------------------------------------------
+# Dependency to get current authenticated user from Bearer token
+# ---------------------------------------------------
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    Resolve the authenticated user from a Bearer token.
+
+    Flow:
+    1) Read token from Authorization header
+    2) Verify token against Supabase JWKS
+    3) Load matching user row from local database
+    4) Return User object or raise 401/404 HTTPException on failure
+    """
+    token = credentials.credentials
+
     try:
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
+        # Verify token and extract payload (this will raise JWTError if invalid)
+        payload = await verify_supabase_token(token)
         user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-        return user_id
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
-        raise credentials_exception
+        raise HTTPException(status_code=401, detail="Could not validate token")
+
+    # Load user from database using user_id from token payload
+    result = await db.execute(select(User).where(User.user_id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found in DB")
+    return user
 
 
-# Dependency 3: role guard — usage: Depends(require_role("doctor"))
-def require_role(required_role: str):
-    async def role_checker(token: str = Depends(oauth2_scheme)):
-        credentials_exception = HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied. Required role: {required_role}",
-        )
-        try:
-            payload = jwt.decode(
-                token,
-                settings.SECRET_KEY,
-                algorithms=[settings.ALGORITHM]
-            )
-            role: str = payload.get("role")
-            if role != required_role:
-                raise credentials_exception
-            return payload
-        except JWTError:
-            raise credentials_exception
+# ---------------------------------------------------
+# Role-based access control dependency
+# ---------------------------------------------------
+def require_role(*roles: str):
+    """
+    Enforce allowed roles on a route.
+
+    Usage:
+    Depends(require_role("Admin", "Doctor","Patient"))
+    """
+
+    # Normalize roles to lowercase and strip whitespaces 
+    normalized_roles = {
+        role.lower().strip()
+        for role in roles
+        if role and role.strip()
+    }
+
+    if not normalized_roles:
+        raise ValueError("require_role needs at least one non-empty role")
+
+    # Function that used as dependency to check the user's role against allowed roles
+    async def role_checker(current_user: User = Depends(get_current_user)) -> User:
+        user_role = current_user.role.lower().strip() if current_user.role else ""
+
+        if user_role not in normalized_roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
     return role_checker
