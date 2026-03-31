@@ -2,12 +2,15 @@ from supabase import create_client, Client
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from typing import Awaitable, Callable
 import uuid
 from fastapi import HTTPException
 from app.core.security import settings
 from app.models.user import User
+from app.models.doctor import Doctor
 from app.models.patient import Patient
 from app.schemas.user import UserRegisterRequest ,LoginRequest ,VerifyOTPRequest
+from app.schemas.doctor import DoctorRegisterRequest
 
 # Utility function to get Supabase admin client
 def get_supabase_admin() -> Client:
@@ -16,7 +19,7 @@ def get_supabase_admin() -> Client:
 
 
 # ---------------------------------------------------------------
-# Functions for patient registration process
+# Functions for User registration process
 # ---------------------------------------------------------------
 def _try_resend_signup_otp(supabase: Client, email: str) -> None:
     """ 
@@ -37,9 +40,6 @@ def _try_resend_signup_otp(supabase: Client, email: str) -> None:
 async def _ensure_patient_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
     """
     Ensure that a Patient profile exists for the given user_id.
-    - This is called after registration and also in idempotent cases where the user already exists.
-    - If the Patient profile already exists, it does nothing.
-    - Does NOT commit—caller must handle commit.
     """
     existing_patient = await db.scalar(
         select(Patient).where(Patient.patient_id == user_id)
@@ -56,67 +56,100 @@ async def _ensure_patient_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
-async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
+async def _ensure_doctor_profile(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    specialty: str,
+    professional_bio: str,
+    years_of_experience: int,
+) -> None:
+    """Ensure that a Doctor profile exists for the given user_id."""
+    existing_doctor = await db.scalar(
+        select(Doctor).where(Doctor.doctor_id == user_id)
+    )
+    if existing_doctor:
+        return
+
+    db.add(
+        Doctor(
+            doctor_id=user_id,
+            specialty=specialty,
+            professional_bio=professional_bio,
+            years_of_experience=years_of_experience,
+        )
+    )
+
+
+def _build_user_metadata(data: UserRegisterRequest, role: str) -> dict:
     """
-    Register a new patient user across Supabase Auth and local database.
-    
-    - Step 1:Check for existing user by email (guard against duplicates).
-    - Step 1b: Create user in Supabase Auth, then request signup OTP resend.
-    - Step 2: Write user metadata to local User table.
-    - Step 3: Create a linked Patient row with unique patient number.
-    
-    Idempotent: If user or email already exists, will return existing record and retry Patient profile creation.
+    Formats user metadata for Supabase Auth based on the registration data and role.
     """
-    # Guard against duplicate registrations by email in local DB.
+    return {
+        "full_name": data.full_name,
+        "role": role,
+        "gender": data.gender,
+        "mobile_no": data.mobile_no,
+        "date_of_birth": str(data.date_of_birth),
+        "profile_image_url": data.profile_image_url or "",
+    }
+
+
+async def _register_user_with_role(
+    data: UserRegisterRequest,
+    db: AsyncSession,
+    role: str,
+    ensure_profile: Callable[[AsyncSession, uuid.UUID], Awaitable[None]],
+) -> User:
+    """
+    Shared user registration flow for both patients and doctors.
+    - Checks for existing user by email and handles unverified accounts.
+    - Creates user in Supabase Auth and local database.
+    - Calls ensure_profile callback to create role-specific profile data.
+    """
+
+    # Validate if a user with the same email already exists in the local database
     existing_user_by_email = await db.scalar(
         select(User).where(User.email == data.email)
     )
 
     if existing_user_by_email:
-        # Idempotent behavior: if user exists but is not active, re-trigger OTP email.
         if not existing_user_by_email.is_active:
             _try_resend_signup_otp(get_supabase_admin(), existing_user_by_email.email)
-        await _ensure_patient_profile(db, existing_user_by_email.user_id)
+        await ensure_profile(db, existing_user_by_email.user_id)
         await db.commit()
         return existing_user_by_email
 
+    # Define supabase client and initialize variable to track created user ID for potential cleanup
     supabase = get_supabase_admin()
     supabase_uid = None
 
     try:
-        # --- Step 1: Create in Supabase Auth ---
+        # Create user in Supabase Auth with the provided email and password
         auth_response = supabase.auth.admin.create_user({
             "email": data.email,
             "password": data.password,
             "email_confirm": False,
-            "user_metadata": {
-                "full_name": data.full_name,
-                "role": "Patient",
-                "gender":data.gender,
-                "mobile_no": data.mobile_no,
-                "date_of_birth": str(data.date_of_birth),
-                "profile_image_url": data.profile_image_url or "", 
-            }
+            "user_metadata": _build_user_metadata(data, role),
         })
 
+        # Validate that the user was created successfully in Supabase Auth and extract the user ID
         if not auth_response or not auth_response.user or not auth_response.user.id:
             raise ValueError("Unable to create user in Supabase Auth")
 
-        # This UUID is the link between Supabase Auth and local DB.
         supabase_uid = uuid.UUID(str(auth_response.user.id))
-        # Trigger OTP email for email verification
+        # Send OTP email for email verification. Supabase does not automatically send OTP for admin-created users.
         _try_resend_signup_otp(supabase, data.email)
 
-        # Idempotency guard if local row was already created in a previous attempt.
+        
         existing_user_by_id = await db.scalar(
             select(User).where(User.user_id == supabase_uid)
         )
         if existing_user_by_id:
-            await _ensure_patient_profile(db, existing_user_by_id.user_id)
+            await ensure_profile(db, existing_user_by_id.user_id)
             await db.commit()
             return existing_user_by_id
 
-        # Write to User table ---
+        # Add the new user to the local database with is_active=False until they verify their email
         new_user = User(
             user_id=supabase_uid,
             full_name=data.full_name,
@@ -125,18 +158,11 @@ async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
             mobile_no=data.mobile_no,
             date_of_birth=data.date_of_birth,
             profile_image_url=data.profile_image_url,
-            role="Patient",
+            role=role,
             is_active=False,
         )
         db.add(new_user)
-
-        # Create Patient row with patient number format: PAT-XXXXXXXX
-        patient_number = f"PAT-{str(supabase_uid)[:8].upper()}"
-        new_patient = Patient(
-            patient_id=supabase_uid,
-            patient_number=patient_number,
-        )
-        db.add(new_patient)
+        await ensure_profile(db, supabase_uid)
 
         await db.commit()
         await db.refresh(new_user)
@@ -144,13 +170,12 @@ async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
     except IntegrityError as exc:
         await db.rollback()
 
-        # If the record already exists, return the existing row instead of failing.
         if supabase_uid is not None:
             existing_user = await db.scalar(
                 select(User).where(User.user_id == supabase_uid)
             )
             if existing_user:
-                await _ensure_patient_profile(db, existing_user.user_id)
+                await ensure_profile(db, existing_user.user_id)
                 await db.commit()
                 return existing_user
 
@@ -158,20 +183,52 @@ async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
             select(User).where(User.email == data.email)
         )
         if existing_by_email:
-            await _ensure_patient_profile(db, existing_by_email.user_id)
+            await ensure_profile(db, existing_by_email.user_id)
             await db.commit()
             return existing_by_email
 
         raise ValueError("Account already exists. Please verify your email or log in.") from exc
     except Exception:
         await db.rollback()
-        # Clean up the Supabase Auth user if local DB write failed
         if supabase_uid is not None:
             try:
                 supabase.auth.admin.delete_user(str(supabase_uid))
             except Exception:
-                pass  # Log this — needs manual cleanup
+                pass
         raise
+
+
+async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
+    """Register a patient by reusing the shared user registration flow."""
+    return await _register_user_with_role(
+        data=data,
+        db=db,
+        role="Patient",
+        ensure_profile=_ensure_patient_profile,
+    )
+
+
+# ---------------------------------------------------------------
+# Doctor registration (Admin-only)
+# ---------------------------------------------------------------
+
+async def register_doctor(data: DoctorRegisterRequest, db: AsyncSession) -> User:
+    """Register a doctor by reusing the shared user registration flow."""
+    async def ensure_doctor(db_session: AsyncSession, user_id: uuid.UUID) -> None:
+        await _ensure_doctor_profile(
+            db=db_session,
+            user_id=user_id,
+            specialty=data.specialty,
+            professional_bio=data.professional_bio,
+            years_of_experience=data.years_of_experience,
+        )
+
+    return await _register_user_with_role(
+        data=data.userData,
+        db=db,
+        role="Doctor",
+        ensure_profile=ensure_doctor,
+    )
 
 
 # ---------------------------------------------------------------
@@ -258,3 +315,11 @@ async def logout_user(current_user: User):
         raise HTTPException(status_code=400, detail="Logout failed")
 
     return {"message": "Logged out successfully"}
+
+
+
+
+
+# ---------------------------------------------------------------
+# Admin Registration (not implemented yet)
+# ---------------------------------------------------------------

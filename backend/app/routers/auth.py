@@ -6,7 +6,8 @@ from app.core.dependencies import get_db
 from app.models.user import User
 from app.core.dependencies import get_current_user
 from app.schemas.user import UserRegisterRequest, UserResponse, ResendOTPRequest, LoginRequest ,VerifyOTPRequest
-from app.services.auth_services import register_patient, verify_otp, resend_signup_otp, login_user,logout_user
+from app.schemas.doctor import DoctorRegisterRequest
+from app.services.auth_services import register_patient, register_doctor, verify_otp, resend_signup_otp, login_user,logout_user
 
 # Define the API router for authentication-related endpoints
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -19,6 +20,16 @@ async def register(data: UserRegisterRequest, db: AsyncSession = Depends(get_db)
     """Patient self-registration. Triggers signup OTP through Supabase Auth."""
     try:
         user = await register_patient(data, db)
+        return user
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/register-doctor", response_model=UserResponse)
+async def register_doctor_route(data: DoctorRegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Doctor registration. Reuses shared auth flow and creates Doctor profile data."""
+    try:
+        user = await register_doctor(data, db)
         return user
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
