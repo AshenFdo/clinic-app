@@ -197,6 +197,10 @@ async def _register_user_with_role(
                 pass
         raise
 
+async def register_admin(data: UserRegisterRequest, db: AsyncSession) -> User:
+    """Admin registration is currently not implemented. This is a placeholder for future implementation."""
+    raise NotImplementedError("Admin registration is not implemented yet.")
+
 
 async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
     """Register a patient by reusing the shared user registration flow."""
