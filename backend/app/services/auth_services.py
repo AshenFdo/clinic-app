@@ -19,7 +19,7 @@ def get_supabase_admin() -> Client:
 
 
 # ---------------------------------------------------------------
-# Functions for User registration process
+# Functions for User registration process (shared by patients and doctors)
 # ---------------------------------------------------------------
 def _try_resend_signup_otp(supabase: Client, email: str) -> None:
     """ 
@@ -206,12 +206,7 @@ async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
         role="Patient",
         ensure_profile=_ensure_patient_profile,
     )
-
-
-# ---------------------------------------------------------------
 # Doctor registration (Admin-only)
-# ---------------------------------------------------------------
-
 async def register_doctor(data: DoctorRegisterRequest, db: AsyncSession) -> User:
     """Register a doctor by reusing the shared user registration flow."""
     async def ensure_doctor(db_session: AsyncSession, user_id: uuid.UUID) -> None:

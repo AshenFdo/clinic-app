@@ -73,4 +73,17 @@ class UserResponse(BaseModel):
             # Database may return numeric type; format as clean string without trailing zeros
             return format(value, "f").rstrip("0").rstrip(".") or "0"
         return str(value)
+    
 
+class UserUpdateRequest(BaseModel):
+    """
+    - UserUpdateRequest model representing the data allowed for updating a user's profile.
+    - All fields are optional to allow partial updates.
+    - Email & Password updates are not handled here.
+    """
+    full_name: Optional[str] = None
+    gender: Optional[str] = None
+    password: Optional[str] = None
+    mobile_no: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    date_of_birth: Optional[date] = None
