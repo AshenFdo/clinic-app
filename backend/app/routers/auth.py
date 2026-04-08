@@ -5,9 +5,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_db
 from app.models.user import User
 from app.core.dependencies import get_current_user
-from app.schemas.user import UserRegisterRequest, UserResponse, ResendOTPRequest, LoginRequest ,VerifyOTPRequest
+from app.schemas.user import (
+    UserRegisterRequest,
+    UserResponse,
+    ResendOTPRequest,
+    LoginRequest,
+    VerifyOTPRequest,
+    ForgotPasswordRequest,
+    ResetPasswordWithOTPRequest,
+)
 from app.schemas.doctor import DoctorRegisterRequest
-from app.services.auth_services import register_patient, register_doctor, verify_otp, resend_signup_otp, login_user,logout_user
+from app.services.auth_services import (register_patient,
+                                        register_doctor, 
+                                        verify_otp,
+                                        resend_signup_otp, 
+                                        login_user,logout_user,
+                                        register_admin,
+                                        forgot_password,
+                                        reset_password_with_otp)
 
 # Define the API router for authentication-related endpoints
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -24,12 +39,27 @@ async def register(data: UserRegisterRequest, db: AsyncSession = Depends(get_db)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
+# --------------------------------
+# Doctor Registration API Endpoint
+# --------------------------------
 @router.post("/register-doctor", response_model=UserResponse)
 async def register_doctor_route(data: DoctorRegisterRequest, db: AsyncSession = Depends(get_db)):
     """Doctor registration. Reuses shared auth flow and creates Doctor profile data."""
     try:
         user = await register_doctor(data, db)
+        return user
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# --------------------------------
+# Admin Registration API Endpoint
+# --------------------------------
+@router.post("/register-admin", response_model=UserResponse)
+async def register_admin_route(data: UserRegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Admin registration. Reuses shared auth flow and creates Admin profile data."""
+    try:
+        user = await register_admin(data, db)
         return user
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -99,5 +129,31 @@ async def logout(current_user: User = Depends(get_current_user)):
         raise exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Logout failed") from exc
+
+
+# -------------------------------
+# Forgot Password API Endpoint
+# -------------------------------
+@router.post("/forgot-password")
+async def forgot_password_route(data: ForgotPasswordRequest):
+    """Send password reset OTP/email to the user."""
+    try:
+        await forgot_password(data.email)
+        return {"message": "Password reset OTP sent successfully."}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# -------------------------------
+# Reset Password API Endpoint
+# -------------------------------
+@router.post("/reset-password")
+async def reset_password_route(data: ResetPasswordWithOTPRequest):
+    """Validate reset OTP and set the new password."""
+    try:
+        await reset_password_with_otp(data)
+        return {"message": "Password reset successful."}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     
 
