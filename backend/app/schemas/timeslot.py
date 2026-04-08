@@ -1,6 +1,9 @@
-from pydantic import BaseModel
+from uuid import UUID
+
+from datetime import date as DateType, time as TimeType
 from typing import Optional
-from datetime import date , time
+
+from pydantic import BaseModel, ConfigDict
 
 class TimeSlotCreateRequest(BaseModel):
     """
@@ -8,6 +11,21 @@ class TimeSlotCreateRequest(BaseModel):
     This is the payload expected when creating a new time slot for a doctor.
     """
     day_of_week: str
-    date: date
-    start_time: time
-    end_time: time
+    date: DateType
+    start_time: TimeType
+    end_time: TimeType
+
+class TimeSlotResponse(BaseModel):
+    slot_id: UUID
+    day_of_week: str
+    date: DateType
+    start_time: TimeType
+    end_time: TimeType
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TimeSlotUpdateResponse(BaseModel):
+    day_of_week: Optional[str] = None
+    date: Optional[DateType] = None
+    start_time: Optional[TimeType] = None
+    end_time: Optional[TimeType] = None
