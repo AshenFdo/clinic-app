@@ -5,7 +5,6 @@ import app.models
 from app.routers import user
 from app.routers import auth
 from app.routers import doctor
-from app.routers import timeslot
 from app.routers import room
 
 app = FastAPI(
@@ -17,7 +16,6 @@ app = FastAPI(
 app.include_router(user.router)
 app.include_router(auth.router)
 app.include_router(doctor.router)
-app.include_router(timeslot.router)
 app.include_router(room.router)
 
 @app.get("/")
