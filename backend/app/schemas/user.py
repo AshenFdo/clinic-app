@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel, EmailStr,ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, model_validator
 from uuid import UUID
 from datetime import date
 from typing import Optional
@@ -19,7 +19,6 @@ class UserRegisterRequest(BaseModel):
     mobile_no: str
     profile_image_url: Optional[str]
     date_of_birth: date
-    role: str
 
 class LoginRequest(BaseModel):
     """
@@ -43,6 +42,25 @@ class ResendOTPRequest(BaseModel):
     - ResendOTPRequest model for requesting a new OTP to be sent to the user's email.
     """
     email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request payload for sending password-reset OTP email."""
+    email: EmailStr
+
+
+class ResetPasswordWithOTPRequest(BaseModel):
+    """Request payload for validating reset OTP and setting a new password."""
+    email: EmailStr
+    otp: str
+    new_password: str
+    confirm_password: str
+
+    @model_validator(mode="after")
+    def validate_passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("New password and confirm password do not match")
+        return self
 
 
 

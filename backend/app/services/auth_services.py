@@ -9,7 +9,7 @@ from app.core.security import settings
 from app.models.user import User
 from app.models.doctor import Doctor
 from app.models.patient import Patient
-from app.schemas.user import UserRegisterRequest ,LoginRequest ,VerifyOTPRequest
+from app.schemas.user import UserRegisterRequest, LoginRequest, VerifyOTPRequest, ResetPasswordWithOTPRequest
 from app.schemas.doctor import DoctorRegisterRequest
 
 # Utility function to get Supabase admin client
@@ -36,7 +36,7 @@ def _try_resend_signup_otp(supabase: Client, email: str) -> None:
         # Avoid failing registration if resend is unavailable or SMTP is not configured.
         pass
 
-
+# Helper function to ensure patient profile exists during patient registration
 async def _ensure_patient_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
     """
     Ensure that a Patient profile exists for the given user_id.
@@ -55,7 +55,7 @@ async def _ensure_patient_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
         )
     )
 
-
+# helper function to ensure doctor profile exists during doctor registration
 async def _ensure_doctor_profile(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -79,7 +79,7 @@ async def _ensure_doctor_profile(
         )
     )
 
-
+# Helper function to build user metadata for Supabase Auth
 def _build_user_metadata(data: UserRegisterRequest, role: str) -> dict:
     """
     Formats user metadata for Supabase Auth based on the registration data and role.
@@ -93,7 +93,7 @@ def _build_user_metadata(data: UserRegisterRequest, role: str) -> dict:
         "profile_image_url": data.profile_image_url or "",
     }
 
-
+# Shared registration flow for patients and doctors and admin (with role-specific profile creation via callback)
 async def _register_user_with_role(
     data: UserRegisterRequest,
     db: AsyncSession,
@@ -196,8 +196,20 @@ async def _register_user_with_role(
             except Exception:
                 pass
         raise
-
-
+# Admin registration (Admin-only)
+async def register_admin(data: UserRegisterRequest, db: AsyncSession) -> User:
+    """ Register an admin user"""
+    async def no_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
+        """Admin users don't need an additional profile."""
+        pass
+    
+    return await _register_user_with_role(
+            data=data,
+            db=db,
+            role="Admin",
+            ensure_profile=no_profile,
+        )
+# Patient registration (open to public)
 async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
     """Register a patient by reusing the shared user registration flow."""
     return await _register_user_with_role(
@@ -312,9 +324,64 @@ async def logout_user(current_user: User):
     return {"message": "Logged out successfully"}
 
 
-
-
-
 # ---------------------------------------------------------------
-# Admin Registration (not implemented yet)
-# ---------------------------------------------------------------
+# Function for forgot password
+# --------------------------------------------------------------
+async def forgot_password(email: str) -> bool:
+    """
+    Send a password reset OTP to the user's email.
+    """
+    supabase = get_supabase_admin()
+    try:
+        redirect_url = getattr(settings, "PASSWORD_RESET_REDIRECT_URL", None)
+        if redirect_url:
+            supabase.auth.reset_password_for_email(email, {"redirectTo": redirect_url})
+        else:
+            # Fall back to Supabase project default SITE_URL when redirect isn't configured.
+            supabase.auth.reset_password_for_email(email)
+    except Exception as exc:
+        error_text = str(exc).lower()
+        if "email not found" in error_text or "user not found" in error_text:
+            raise ValueError("No account found with that email address.") from exc
+        raise ValueError("Unable to send password reset email right now. Please try again.") from exc
+    return True
+
+
+async def reset_password_with_otp(data: ResetPasswordWithOTPRequest) -> bool:
+    """
+    Validate password reset OTP and update the user's password.
+    """
+    supabase = get_supabase_admin()
+    otp = data.otp.strip()
+
+    try:
+        verify_response = supabase.auth.verify_otp({
+            "email": data.email,
+            "token": otp,
+            "type": "recovery",
+        })
+    except Exception as exc:
+        raise ValueError(f"Invalid or expired reset OTP: {str(exc)}") from exc
+
+    if not verify_response or not verify_response.user or not verify_response.user.id:
+        raise ValueError("Invalid or expired reset OTP")
+
+    if (
+        not verify_response.session
+        or not verify_response.session.access_token
+        or not verify_response.session.refresh_token
+    ):
+        raise ValueError("Recovery session is missing. Please request a new reset OTP.")
+
+    try:
+        # Recovery OTP verification creates a short-lived user session.
+        # Use that session to update the password as the authenticated user.
+        supabase.auth.set_session(
+            verify_response.session.access_token,
+            verify_response.session.refresh_token,
+        )
+        supabase.auth.update_user({"password": data.new_password})
+    except Exception as exc:
+        raise ValueError(f"Unable to reset password: {str(exc)}") from exc
+
+    return True
