@@ -1,10 +1,15 @@
 from jose import jwt, JWTError
 from app.core.config import settings
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status
 import httpx
 
 import secrets
 from datetime import datetime, timedelta, timezone
+
+
+_JWKS_CACHE: dict | None = None
+_JWKS_CACHE_AT: datetime | None = None
+_JWKS_CACHE_TTL_SECONDS = 300
  
 
 
@@ -24,10 +29,35 @@ async def verify_supabase_token(token: str) -> dict:
 
     # Construct the JWKS URL based on the Supabase project URL
     jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-    
-    # Fetch the JWKS keys from Supabase 
-    async with httpx.AsyncClient() as client:
-        jwks = (await client.get(jwks_url)).json()
+
+    # Reuse recently fetched keys to avoid a network call on every request.
+    global _JWKS_CACHE, _JWKS_CACHE_AT
+    now = datetime.now(timezone.utc)
+    if (
+        _JWKS_CACHE is not None
+        and _JWKS_CACHE_AT is not None
+        and (now - _JWKS_CACHE_AT).total_seconds() < _JWKS_CACHE_TTL_SECONDS
+    ):
+        jwks = _JWKS_CACHE
+    else:
+        try:
+            timeout = httpx.Timeout(connect=10.0, read=10.0, write=10.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(jwks_url)
+                response.raise_for_status()
+                jwks = response.json()
+            _JWKS_CACHE = jwks
+            _JWKS_CACHE_AT = now
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication provider timeout",
+            )
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication provider unavailable",
+            )
     
     # Decode and verify token using JWKS (jose automatically selects the correct key by kid)
     payload = jwt.decode(

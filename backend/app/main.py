@@ -2,11 +2,7 @@
 
 from fastapi import FastAPI
 import app.models
-from app.routers import user
-from app.routers import auth
-from app.routers import doctor
-from app.routers import timeslot
-from app.routers import room
+from app.routers import user, auth, doctor, timeslot, room, available_slots
 
 app = FastAPI(
     title="Clinic Management System",
@@ -19,7 +15,7 @@ app.include_router(auth.router)
 app.include_router(doctor.router)
 app.include_router(timeslot.router)
 app.include_router(room.router)
-
+app.include_router(available_slots.router)
 @app.get("/")
 async def root():
     return {"message": "Clinic API is running"}
