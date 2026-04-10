@@ -1,9 +1,8 @@
-from tracemalloc import start
 from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict
 from typing import List
 from datetime import date as Date, time as Time
+
 
 
 class AvailableSlotsResponse(BaseModel):
@@ -20,18 +19,18 @@ class AvailableSlotsResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AvailableSlotsForDoctorResponse(BaseModel):
-    """Response model for available slots for a specific doctor."""
-    as_id: UUID
-    doctor_name: str
-    room_no:str
-    date: Date
-    day_of_week:str
-    start_time:Time
-    end_time:Time  
-    status: str
+# class AvailableSlotsForDoctorResponse(BaseModel):
+#     """Response model for available slots for a specific doctor."""
+#     as_id: UUID
+#     doctor_name: str
+#     room_no:str
+#     date: Date
+#     day_of_week:str
+#     start_time:Time
+#     end_time:Time  
+#     status: str
 
-    model_config = ConfigDict(from_attributes=True)
+#     model_config = ConfigDict(from_attributes=True)
 
 
 class CreateAvailableSlotRequest(BaseModel):
