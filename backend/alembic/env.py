@@ -21,7 +21,6 @@ from app.models.medicine import Medicine
 from app.models.patient import Patient
 from app.models.prescription_item import PrescriptionItem
 from app.models.prescription import Prescription
-from app.models.room import Room
 from app.models.timeslot import TimeSlot
 
 # later you'll add: from app.models.doctor import Doctor  etc.

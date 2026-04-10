@@ -19,6 +19,7 @@ async def create_a_timeslot(db:AsyncSession, data: TimeSlotCreateRequest):
         new_timeslot = TimeSlot(
             day_of_week=data.day_of_week,
             date=data.date,
+            room_no=data.room_no,
             start_time=data.start_time,
             end_time=data.end_time
         )

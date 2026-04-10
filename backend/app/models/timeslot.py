@@ -21,6 +21,7 @@ class TimeSlot(Base):
     slot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     day_of_week = Column(String, nullable=False)
     date = Column(Date, nullable=False)
+    room_no = Column(String, nullable=False)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
 

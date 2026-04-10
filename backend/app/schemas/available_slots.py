@@ -36,8 +36,6 @@ class AvailableSlotsForDoctorResponse(BaseModel):
 
 class CreateAvailableSlotRequest(BaseModel):
     """Request model for creating an available slot."""
-    doctor_id: UUID
-    room_id: UUID
     slot_id: UUID  
     status: str
 
