@@ -1,10 +1,15 @@
+from unittest import result
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime
 from app.models.available_slots import AvailableSlots
 from app.models.user import User
 from app.models.timeslot import TimeSlot
-from app.schemas.available_slots import  CreateAvailableSlotRequest, AvailableSlotsResponse
+from app.schemas.available_slots import  (CreateAvailableSlotRequest, 
+                                          AvailableSlotsResponse,
+                                          UpdateAvailableSlotRequest)
 
 # -----------------------------------
 # Helper function to map database results to response model
@@ -124,6 +129,11 @@ async def add_available_slot(db:AsyncSession, doctor:User, data:CreateAvailableS
             if slot.doctor_id != doctor_id:
                 raise HTTPException(status_code=400, detail="This time slot is already marked as available for another doctor.")
             raise HTTPException(status_code=400, detail="This time slot is already marked as available for this doctor.")
+        
+        # Validate Time slot time < current time (Cannot add past time slots)
+        current_time = datetime.now().time()
+        if time_slot.date < datetime.now().date() or (time_slot.date == datetime.now().date() and time_slot.end_time < current_time):
+            raise HTTPException(status_code=400, detail="Cannot add past time slots as available.")
             
         # Create a new AvailableSlots entry
         new_av_slot = AvailableSlots(
@@ -143,6 +153,87 @@ async def add_available_slot(db:AsyncSession, doctor:User, data:CreateAvailableS
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# -----------------------------------
+# Function to update available slot for a doctor
+# -----------------------------------
+async def update_av_slots(db:AsyncSession,data:UpdateAvailableSlotRequest, as_id:str, doctor:User):
+    """
+    - Doctors can update the status of their available slots.
+    - Updates the status of an existing available slot for a doctor in the database
+    - 
+        - Validate AvailableSlot if exists and belongs to the doctor
+        - Update AvailableSlot entry
+    """
+    try:
+        # Validate if the provided as_id exists in the AvailableSlots table and belongs to the doctor
+        av_slot_result = await db.execute(
+            select(AvailableSlots).where(AvailableSlots.as_id == as_id, AvailableSlots.doctor_id == doctor.user_id)
+        )
+        av_slot = av_slot_result.scalars().first()
 
+        if not av_slot:
+            raise HTTPException(status_code=404, detail="Available slot not found for this doctor.")
+        
+        # Update the status of the available slot
+        update_data = data.model_dump(exclude_unset=True)
+        # Update data (For now, only status can be updated, but this can be extended in the future if needed)
+        for field, value in update_data.items():
+            setattr(av_slot, field, value)
 
+        await db.commit()
+        await db.refresh(av_slot)
+
+        # Fetch the related TimeSlot and Doctor information for the response
+        result = await db.execute(
+            select(AvailableSlots, TimeSlot, User)
+            .join(TimeSlot, AvailableSlots.slot_id == TimeSlot.slot_id)
+            .join(User, AvailableSlots.doctor_id == User.user_id)
+            .where(AvailableSlots.as_id == as_id)
+        )
+        row = result.first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Updated available slot not found.")
+
+        available_slot, time_slot, doctor_row = row
+
+        return _map_available_slot_to_response(available_slot, time_slot, doctor_row)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
+# ------------------------------------ 
+# Function to delete an available slot for a doctor
+# ------------------------------------
+async def delete_available_slot(db:AsyncSession, as_id:str, doctor:User):
+    """
+    - Doctors can delete their available slots.
+    - Deletes an existing available slot for a doctor from the database
+    """
+    try:
+        # Validate Doctor if exists
+        doctor_id = doctor.user_id
+        if not doctor_id:
+            raise HTTPException(status_code=400, detail="Doctor not found.")
+        
+        # Validate if the provided as_id exists in the AvailableSlots table and belongs to the doctor
+        av_slot_result = await db.execute(
+            select(AvailableSlots)
+            .where(AvailableSlots.as_id == as_id)
+            .where(AvailableSlots.doctor_id == doctor_id)
+        )
+        av_slot = av_slot_result.scalars().first()
+        if not av_slot:
+            raise HTTPException(status_code=404, detail="Available slot not found for this doctor.")
+        
+        # Delete the available slot
+        await db.delete(av_slot)
+        await db.commit()
+
+        return "Item deleted"
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends, dependencies
 from app.core.dependencies import get_db, get_current_user, require_role
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.available_slots import AvailableSlots
-from app.schemas.available_slots import AvailableSlotsResponse, CreateAvailableSlotRequest
+from app.schemas.available_slots import (AvailableSlotsResponse,
+                                         CreateAvailableSlotRequest,
+                                         UpdateAvailableSlotRequest
+                                         )
 from app.services.available_slots_services import ( get_avaulable_slots,
                                                    get_avaulable_slots_by_doctorID,
-                                                   add_available_slot
+                                                   add_available_slot,
+                                                   update_av_slots,
+                                                   delete_available_slot
                                                    )
 
 
@@ -43,5 +48,26 @@ async def create_available_slot(
 ):
     return await add_available_slot(db, current_user, data)
 
+# ------------------------------------
+# API router to update available slot for a doctor
+# ------------------------------------
+@router.patch("/update/{as_id}", response_model=AvailableSlotsResponse, dependencies=[Depends(require_role("Doctor"))])
+async def update_available_slot(
+    as_id: str,
+    data: UpdateAvailableSlotRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return await update_av_slots(db, data, as_id, current_user)
 
+# ------------------------------------
+# API router to delete available slot for a doctor
+# ------------------------------------
+@router.delete("/delete/{as_id}", dependencies=[Depends(require_role("Doctor"))])
+async def delete_av_slot(
+    as_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return await delete_available_slot(db, as_id, current_user)
 

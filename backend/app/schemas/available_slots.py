@@ -39,3 +39,9 @@ class CreateAvailableSlotRequest(BaseModel):
     status: str
 
     model_config = ConfigDict(from_attributes=True)
+
+class UpdateAvailableSlotRequest(BaseModel):
+    """Request model for updating an available slot
+    - only status can be updated
+    """
+    status:str
