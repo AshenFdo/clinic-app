@@ -8,6 +8,7 @@ from app.models.doctor import Doctor
 from app.models.user import User
 from app.schemas.doctor import DoctorUpdateRequest
 from app.core.config import settings
+from app.schemas.doctor import DoctorResponse
 
 # --------------------------------
 # Initialize Supabase client
@@ -33,19 +34,17 @@ async def get_doctors(db:AsyncSession):
         rows = result.all()
 
         # Create a list of doctors with their user data and doctor-specific information
-        doctors = [
-            {
-                "userData": user,
-                "specialty": doctor.specialty,
-                "professional_bio": doctor.professional_bio,
-                "years_of_experience": doctor.years_of_experience,
-            }
-            for doctor, user in rows
-        ]
 
-        if not doctors:
-            return []
-        return doctors
+        return list[DoctorResponse](
+            DoctorResponse(
+                userData=user,
+                specialty=doctor.specialty,
+                professional_bio=doctor.professional_bio,
+                years_of_experience=doctor.years_of_experience,
+            )
+            for doctor, user in rows
+        )
+
     except Exception as e:
         print(f"Error in Fetching doctors {e}")
         raise HTTPException(status_code=500,detail=str(e))
@@ -72,12 +71,13 @@ async def get_doctor_by_id(db:AsyncSession, doctor_id:str):
         
         # Unpack the doctor and user from the result row
         doctor, user = row
-        return {
-            "userData": user,
-            "specialty": doctor.specialty,
-            "professional_bio": doctor.professional_bio,
-            "years_of_experience": doctor.years_of_experience,
-        }
+
+        return DoctorResponse(
+            userData=user,
+            specialty=doctor.specialty,
+            professional_bio=doctor.professional_bio,
+            years_of_experience=doctor.years_of_experience,
+        )
     
     except HTTPException:
         raise
@@ -133,12 +133,12 @@ async def update_doctor_data(db:AsyncSession,data: DoctorUpdateRequest, current_
         await db.refresh(user)
         await db.refresh(doctor)
 
-        return {
-            "userData": user,
-            "specialty": doctor.specialty,
-            "professional_bio": doctor.professional_bio,
-            "years_of_experience": doctor.years_of_experience,
-        }
+        return DoctorResponse(
+            userData=user,
+            specialty=doctor.specialty,
+            professional_bio=doctor.professional_bio,
+            years_of_experience=doctor.years_of_experience,
+        )
     except HTTPException:
         raise
     except Exception as e:
