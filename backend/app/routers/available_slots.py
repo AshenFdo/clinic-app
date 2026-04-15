@@ -1,5 +1,3 @@
-import re
-
 from fastapi import APIRouter, Depends, dependencies
 from app.core.dependencies import get_db, get_current_user, require_role
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +10,8 @@ from app.services.available_slots_services import ( get_avaulable_slots,
                                                    get_avaulable_slots_by_doctorID,
                                                    add_available_slot,
                                                    update_av_slots,
-                                                   delete_available_slot
+                                                   delete_available_slot,
+                                                   get_available_slot_by_id
                                                    )
 
 
@@ -36,6 +35,14 @@ async def read_available_slots_for_doctor_admin(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_avaulable_slots_by_doctorID(db, doctor_id)
+
+# 
+@router.get("/{as_id}", response_model=AvailableSlotsResponse)
+async def read_available_slot_by_id(
+    as_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_available_slot_by_id(db, as_id)
 
 # -----------------------------------
 # API router to add available slot for a doctor

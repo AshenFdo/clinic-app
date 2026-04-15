@@ -25,6 +25,7 @@ def _map_available_slots_to_response(results) -> list[AvailableSlotsResponse]:
                 doctor_name=doctor.full_name,
                 room_no=time_slot.room_no,
                 day_of_week=time_slot.day_of_week,
+                expected_appointments=available_slot.expected_appointments or 0,
                 date=time_slot.date,
                 start_time=time_slot.start_time,
                 end_time=time_slot.end_time,
@@ -48,6 +49,7 @@ def _map_available_slot_to_response(
         start_time=time_slot.start_time,
         end_time=time_slot.end_time,
         status=available_slot.status or "Available",
+        expected_appointments=available_slot.expected_appointments or 0
     )
 
 
@@ -91,7 +93,33 @@ async def get_avaulable_slots_by_doctorID(db:AsyncSession, doctor_id:str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# -----------------------------------
+# Function to get all available slot by id (Admin view)
+# -----------------------------------
+async def get_available_slot_by_id(db:AsyncSession, as_id:str):
+    """
+    Fetches a specific available slot by its ID from the database (Admin view)
+    """
+    try:
+        av_slot = await db.execute(
+            select(AvailableSlots,TimeSlot,User)
+                .join(TimeSlot, AvailableSlots.slot_id == TimeSlot.slot_id)
+                .join(User, AvailableSlots.doctor_id == User.user_id)
+             .where(AvailableSlots.as_id == as_id)
+            )
+        result = av_slot.first()
+        if not result:
+            raise HTTPException(status_code=404, detail="Available slot not found")
+        
+        available_slot, time_slot, doctor = result
+        return _map_available_slot_to_response(available_slot, time_slot, doctor)
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
 # -----------------------------------
 # Function to add available slot for a doctor
 # -----------------------------------

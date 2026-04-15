@@ -1,3 +1,4 @@
+from math import exp
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from typing import List
@@ -15,6 +16,7 @@ class AvailableSlotsResponse(BaseModel):
     start_time:Time
     end_time:Time  
     status: str
+    expected_appointments: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,11 +39,13 @@ class CreateAvailableSlotRequest(BaseModel):
     """Request model for creating an available slot."""
     slot_id: UUID  
     status: str
+    expected_appointments: int
 
     model_config = ConfigDict(from_attributes=True)
 
 class UpdateAvailableSlotRequest(BaseModel):
     """Request model for updating an available slot
-    - only status can be updated
+    - only status and expected_appointments can be updated
     """
     status:str
+    expected_appointments: int

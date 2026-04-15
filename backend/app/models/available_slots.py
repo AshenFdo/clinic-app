@@ -21,6 +21,7 @@ class AvailableSlots(Base):
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("Doctor.doctor_id"), nullable=False)
     slot_id = Column(UUID(as_uuid=True), ForeignKey("TimeSlot.slot_id"), nullable=False)
     status = Column(String, nullable=False)
+    expected_appointments = Column(Integer, nullable=True)
 
 
     # Relationships
