@@ -1,7 +1,7 @@
 from math import exp
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
-from typing import List
+from typing import Optional
 from datetime import date as Date, time as Time
 
 
@@ -47,5 +47,5 @@ class UpdateAvailableSlotRequest(BaseModel):
     """Request model for updating an available slot
     - only status and expected_appointments can be updated
     """
-    status:str
-    expected_appointments: int
+    status:Optional[str] = None
+    expected_appointments: Optional[int] = None

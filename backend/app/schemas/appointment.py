@@ -33,3 +33,10 @@ class AppointmentDetailsResponse(AppointmentResponse):
     patient_name: str
     slot_time: str
     slot_date: date
+
+class UpdateAppointmentRequest(BaseModel):
+    """Request model for updating an appointment."""
+    status: Optional[str] = None
+    is_draft: Optional[bool] = None
+
+    model_config = ConfigDict(from_attributes=True)
