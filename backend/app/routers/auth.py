@@ -70,9 +70,10 @@ async def register_admin_route(data: UserRegisterRequest, db: AsyncSession = Dep
 @router.post("/verify-otp")
 async def verify(data: VerifyOTPRequest, db: AsyncSession = Depends(get_db)):
     """Verify signup OTP and activate the local user account."""
-    success = await verify_otp(data)
-    if not success:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    try:
+        access_token = await verify_otp(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     user = await db.scalar(select(User).where(User.email == data.email))
     if not user:
@@ -81,7 +82,13 @@ async def verify(data: VerifyOTPRequest, db: AsyncSession = Depends(get_db)):
     # Keep local user state aligned with Supabase email verification.
     user.is_active = True
     await db.commit()
-    return {"message": "Email verified. You can now log in."}
+    await db.refresh(user)
+    return {
+        "message": "Email verified. You can now log in.",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": UserResponse.model_validate(user),
+    }
 
 # -------------------------------
 # Resend OTP API Endpoint

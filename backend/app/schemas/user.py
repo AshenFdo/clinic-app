@@ -17,7 +17,7 @@ class UserRegisterRequest(BaseModel):
     gender: str
     password: str
     mobile_no: str
-    profile_image_url: Optional[str]
+    profile_image_url: Optional[str] = ""
     date_of_birth: date
 
 class LoginRequest(BaseModel):

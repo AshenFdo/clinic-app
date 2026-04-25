@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 import app.models
+from fastapi.middleware.cors import CORSMiddleware
 from app.routers import user, auth, doctor, timeslot, available_slots, patient,appointment
 
 app = FastAPI(
@@ -9,6 +10,15 @@ app = FastAPI(
                 docs_url="/docs",       # Swagger UI at http://localhost:8000/docs
     redoc_url="/redoc",     # ReDoc UI at http://localhost:8000/redoc
     )
+
+# CORS configuration to allow requests from the frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite dev server URL
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
 
 app.include_router(user.router)
 app.include_router(auth.router)

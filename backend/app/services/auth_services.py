@@ -241,11 +241,11 @@ async def register_doctor(data: DoctorRegisterRequest, db: AsyncSession) -> User
 # ---------------------------------------------------------------
 # Functions for OTP verification and resend
 # ---------------------------------------------------------------
-async def verify_otp(data: VerifyOTPRequest) -> bool:
+async def verify_otp(data: VerifyOTPRequest) -> str:
     """
     - Verify the OTP submitted by the user after signup.
     - Calls Supabase Auth to validate the token sent to their email.
-    - Returns True if verification succeeded, False otherwise.
+    - Returns a JWT access token when verification succeeds.
     
     Note: Caller is responsible for updating local User.is_active after successful verification.
     """
@@ -256,9 +256,16 @@ async def verify_otp(data: VerifyOTPRequest) -> bool:
             "token": data.otp,
             "type": "signup"
         })
-        return response.user is not None
-    except Exception:
-        return False
+    except Exception as exc:
+        raise ValueError("Invalid or expired OTP") from exc
+
+    if not response or not response.user:
+        raise ValueError("Invalid or expired OTP")
+
+    if not response.session or not response.session.access_token:
+        raise ValueError("Verification succeeded but no session was created")
+
+    return response.session.access_token
 
 
 async def resend_signup_otp(email: str) -> bool:
