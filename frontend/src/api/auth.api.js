@@ -27,17 +27,10 @@ export const resendOtp = async ({ email }) => {
  
 // ─── Login ────────────────────────────────────────────────────────────────
 // POST /auth/login
-// FastAPI expects form data (OAuth2PasswordRequestForm) by default.
-// We send as URLSearchParams to match that.
+// Backend expects JSON body { email, password } and returns { access_token, token_type }.
 export const loginUser = async ({ email, password }) => {
-  const formData = new URLSearchParams();
-  formData.append("username", email); // FastAPI OAuth2 uses "username"
-  formData.append("password", password);
- 
-  const response = await apiClient.post("/auth/login", formData, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  });
-  return response.data; // { access_token, token_type, user }
+  const response = await apiClient.post("/auth/login", { email, password });
+  return response.data; // { access_token, token_type }
 };
  
 // ─── Forgot Password ──────────────────────────────────────────────────────
@@ -47,15 +40,24 @@ export const forgotPassword = async ({ email }) => {
   const response = await apiClient.post("/auth/forgot-password", { email });
   return response.data;
 };
+
+// ─── Verify Reset OTP ─────────────────────────────────────────────────────
+// POST /auth/verify-reset-otp
+// Validates password reset OTP and returns recovery session tokens.
+export const verifyResetOtp = async ({ email, otp }) => {
+  const response = await apiClient.post("/auth/verify-reset-otp", { email, otp });
+  return response.data;
+};
  
 // ─── Reset Password ───────────────────────────────────────────────────────
 // POST /auth/reset-password
-// Verifies the reset OTP and sets a new password.
-export const resetPassword = async ({ email, otp, new_password }) => {
+// Uses verified recovery tokens to set a new password.
+export const resetPassword = async ({ access_token, refresh_token, new_password, confirm_password }) => {
   const response = await apiClient.post("/auth/reset-password", {
-    email,
-    otp,
+    access_token,
+    refresh_token,
     new_password,
+    confirm_password,
   });
   return response.data;
 };

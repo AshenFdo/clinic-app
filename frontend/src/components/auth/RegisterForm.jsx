@@ -150,6 +150,8 @@ const RegisterForm = () => {
                     </Alert>
                 )}
 
+                {/* Form Fields */}
+
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
 
                     {/* Name Field */}

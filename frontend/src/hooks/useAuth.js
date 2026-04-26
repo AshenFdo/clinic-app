@@ -7,6 +7,7 @@ import {
   resendOtp,
   loginUser,
   forgotPassword,
+  verifyResetOtp,
   resetPassword,
   getCurrentUser,
 } from "../api/auth.api";
@@ -95,15 +96,26 @@ export const useAuth = () => {
     setLoading(true);
     try {
       const data = await loginUser({ email, password });
-      login(data.access_token, data.user);
+      if (!data?.access_token) {
+        throw new Error("Login succeeded but no access token was returned.");
+      }
 
-      // Redirect based on role
-      const roleRoutes = {
-        admin: "/admin/dashboard",
-        doctor: "/doctor/dashboard",
-        patient: "/patient/dashboard",
-      };
-      navigate(roleRoutes[data.user.role] || "/");
+      // Persist token first so authorized /users/me request can resolve current user profile.
+      localStorage.setItem("access_token", data.access_token);
+      const currentUser = await getCurrentUser();
+      login(data.access_token, currentUser);
+
+      // // Redirect based on role
+      // const roleRoutes = {
+      //   admin: "/admin/dashboard",
+      //   doctor: "/doctor/dashboard",
+      //   patient: "/patient/dashboard",
+      // };
+
+
+      // const normalizedRole = (currentUser?.role || "").toLowerCase();
+      navigate( "/user_sample");
+      
       return { success: true };
     } catch (err) {
       const msg = err.response?.data?.detail || "Login failed.";
@@ -130,12 +142,43 @@ export const useAuth = () => {
     }
   };
 
-  // ── Reset Password ────────────────────────────────────────────────────────
-  const resetUserPassword = async (email, otp, newPassword) => {
+  // ── Verify Forgot Password OTP ───────────────────────────────────────────
+  const verifyForgotPasswordOtp = async (email, otp) => {
     clearError();
     setLoading(true);
     try {
-      await resetPassword({ email, otp, new_password: newPassword });
+      const data = await verifyResetOtp({ email, otp });
+      if (!data?.access_token || !data?.refresh_token) {
+        throw new Error("OTP verified, but recovery session tokens were not returned.");
+      }
+
+      return {
+        success: true,
+        session: {
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        },
+      };
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || "Invalid or expired OTP.";
+      setError(msg);
+      return { success: false, error: msg };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Reset Password ────────────────────────────────────────────────────────
+  const resetUserPassword = async (accessToken, refreshToken, newPassword, confirmPassword = newPassword) => {
+    clearError();
+    setLoading(true);
+    try {
+      await resetPassword({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
       navigate("/login");
       return { success: true };
     } catch (err) {
@@ -167,6 +210,7 @@ export const useAuth = () => {
     resendRegistrationOtp,
     loginWithCredentials,
     sendForgotPasswordOtp,
+    verifyForgotPasswordOtp,
     resetUserPassword,
     getUserData,
     logout: handleLogout,
