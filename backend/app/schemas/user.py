@@ -49,10 +49,16 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
-class ResetPasswordWithOTPRequest(BaseModel):
-    """Request payload for validating reset OTP and setting a new password."""
+class VerifyResetOTPRequest(BaseModel):
+    """Request payload for validating password-reset OTP."""
     email: EmailStr
     otp: str
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request payload for setting a new password after OTP verification."""
+    access_token: str
+    refresh_token: str
     new_password: str
     confirm_password: str
 

@@ -12,7 +12,8 @@ from app.schemas.user import (
     LoginRequest,
     VerifyOTPRequest,
     ForgotPasswordRequest,
-    ResetPasswordWithOTPRequest,
+    VerifyResetOTPRequest,
+    ResetPasswordRequest,
 )
 from app.schemas.doctor import DoctorRegisterRequest
 from app.services.auth_services import (register_patient,
@@ -22,7 +23,8 @@ from app.services.auth_services import (register_patient,
                                         login_user,logout_user,
                                         register_admin,
                                         forgot_password,
-                                        reset_password_with_otp)
+                                        verify_reset_password_otp,
+                                        reset_password)
 
 # Define the API router for authentication-related endpoints
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -152,13 +154,29 @@ async def forgot_password_route(data: ForgotPasswordRequest):
 
 
 # -------------------------------
+# Verify Reset OTP API Endpoint
+# -------------------------------
+@router.post("/verify-reset-otp")
+async def verify_reset_otp_route(data: VerifyResetOTPRequest):
+    """Validate password-reset OTP and return recovery session tokens."""
+    try:
+        session = await verify_reset_password_otp(data)
+        return {
+            "message": "Reset OTP verified successfully.",
+            **session,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# -------------------------------
 # Reset Password API Endpoint
 # -------------------------------
 @router.post("/reset-password")
-async def reset_password_route(data: ResetPasswordWithOTPRequest):
-    """Validate reset OTP and set the new password."""
+async def reset_password_route(data: ResetPasswordRequest):
+    """Set a new password using a verified recovery session."""
     try:
-        await reset_password_with_otp(data)
+        await reset_password(data)
         return {"message": "Password reset successful."}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -9,7 +9,13 @@ from app.core.security import settings
 from app.models.user import User
 from app.models.doctor import Doctor
 from app.models.patient import Patient
-from app.schemas.user import UserRegisterRequest, LoginRequest, VerifyOTPRequest, ResetPasswordWithOTPRequest
+from app.schemas.user import (
+    UserRegisterRequest,
+    LoginRequest,
+    VerifyOTPRequest,
+    VerifyResetOTPRequest,
+    ResetPasswordRequest,
+)
 from app.schemas.doctor import DoctorRegisterRequest
 
 # Utility function to get Supabase admin client
@@ -354,9 +360,9 @@ async def forgot_password(email: str) -> bool:
     return True
 
 
-async def reset_password_with_otp(data: ResetPasswordWithOTPRequest) -> bool:
+async def verify_reset_password_otp(data: VerifyResetOTPRequest) -> dict:
     """
-    Validate password reset OTP and update the user's password.
+    Validate password reset OTP and return the short-lived recovery session.
     """
     supabase = get_supabase_admin()
     otp = data.otp.strip()
@@ -380,12 +386,23 @@ async def reset_password_with_otp(data: ResetPasswordWithOTPRequest) -> bool:
     ):
         raise ValueError("Recovery session is missing. Please request a new reset OTP.")
 
+    return {
+        "access_token": verify_response.session.access_token,
+        "refresh_token": verify_response.session.refresh_token,
+        "token_type": "bearer",
+    }
+
+
+async def reset_password(data: ResetPasswordRequest) -> bool:
+    """
+    Reset password using the recovery session returned after OTP verification.
+    """
+    supabase = get_supabase_admin()
+
     try:
-        # Recovery OTP verification creates a short-lived user session.
-        # Use that session to update the password as the authenticated user.
         supabase.auth.set_session(
-            verify_response.session.access_token,
-            verify_response.session.refresh_token,
+            data.access_token.strip(),
+            data.refresh_token.strip(),
         )
         supabase.auth.update_user({"password": data.new_password})
     except Exception as exc:
