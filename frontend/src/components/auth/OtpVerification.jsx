@@ -17,11 +17,11 @@ const OTP_LENGTH = 6;
 const OTP_RESEND_SECONDS = 60;
 
 
-const OtpVerification = () => {
+const OtpVerification = ({ email: propEmail }) => {
     const { verifyRegistrationOtp, resendRegistrationOtp, loading, error, clearError } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
-    const [email] = useState(location.state?.email || "");
+    const [email] = useState(propEmail || location.state?.email || "");
     const [resendNonce, setResendNonce] = useState(0);
 
     const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(""));
@@ -95,13 +95,15 @@ const OtpVerification = () => {
     return (
         <Box
             sx={{
-                minHeight: "100vh",
+
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: "background.default",
+                borderRadius: 2,
                 padding: 3,
+                margin: 5
             }}
         >
             {!email && (

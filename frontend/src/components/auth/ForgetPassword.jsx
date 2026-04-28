@@ -26,7 +26,7 @@ import {
 const OTP_LENGTH = 6;
 const OTP_RESEND_SECONDS = 60;
 
-const ForgetPassword = () => {
+const ForgetPassword = ({ onBackToLogin }) => {
     const { loading, resetUserPassword, sendForgotPasswordOtp, verifyForgotPasswordOtp, error, clearError } = useAuth();
     const [email, setEmail] = useState("");
     const [emailError, setEmailError] = useState("");
@@ -46,6 +46,7 @@ const ForgetPassword = () => {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const [step, setStep] = useState(1); // 1: enter email, 2: enter OTP, 3: reset new password
+    const [successMessage, setSuccessMessage] = useState(""); // For password reset success
 
     const validationEmail = () => {
         if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return "Valid email required";
@@ -191,7 +192,10 @@ const ForgetPassword = () => {
             confirmPassword,
         );
         if (result.success) {
-            
+            setSuccessMessage("Password reset successfully! Redirecting to login...");
+            setTimeout(() => {
+                onBackToLogin();
+            }, 2000);
         } else {
             window.alert(result.error || "Failed to reset password. Please try again.");
         }
@@ -201,12 +205,14 @@ const ForgetPassword = () => {
     return (
         <Box
             sx={{
-                minHeight: "100vh",
+                minHeight: "500px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: "background.default",
+                width: "70%",
+                borderRadius: 2,
                 padding: 3,
             }}
         >
@@ -216,6 +222,7 @@ const ForgetPassword = () => {
                 <>
                     <Box component="form" onSubmit={handleSendOTP} sx={{
                         border: `1px solid ${theme.palette.divider}`,
+                        height: "100%",
                         padding: 4,
                         borderRadius: 2,
                         display: "flex",
@@ -233,53 +240,63 @@ const ForgetPassword = () => {
                                 mb: 0.5
                             }}
                         >
-                            Enter your registered email
+                            Forget your password?
                         </Typography>
-
                         <Typography sx={{ color: theme.palette.text.secondary, mb: 3, font: theme.typography.body2 }}>
-                            Remember your password?{" "}
-                            <Link to="/login" style={{ color: theme.palette.primary.main, fontWeight: "bold", textDecoration: "none" }}>
-                                Sign in →
-                            </Link>
-                        </Typography>
-                        {/*Display error message */}
-                        {error && (
-                            <Alert severity="error" onClose={clearError} sx={{ mb: 3 }}>
-                                {error}
-                            </Alert>
-                        )}
+                           Enter your email to receive a password reset OTP
+                            </Typography>
 
-
-                        <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <TextField
-                                name="email"
-                                label="Email Address"
-                                value={email}
-                                onChange={handleFormChange}
-                                error={!!emailError}
-                                helperText={emailError || ''}
-                                fullWidth
-                                InputProps={{
-                                    startAdornment: (
-                                        <InputAdornment position="start">
-                                            <EmailOutlined sx={{ color: "action.active" }} />
-                                        </InputAdornment>
-                                    )
-                                }}
-                            />
-                            <Button type="submit" variant="contained" size="large" disabled={loading || isStepTransitioning}>
-                                {loading ? <CircularProgress size={24} color="inherit" /> : "Send OTP"}
-                            </Button>
-
-                            {isStepTransitioning && (
-                                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                                    <CircularProgress size={18} />
-                                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                                        OTP sent. Opening verification step...
-                                    </Typography>
-                                </Box>
+                            {/*Display error message */}
+                            {error && (
+                                <Alert severity="error" onClose={clearError} sx={{ mb: 3 }}>
+                                    {error}
+                                </Alert>
                             )}
-                        </Box>
+
+
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 4, mt: 2 }}>
+                                <TextField
+                                    name="email"
+                                    label="Email Address"
+                                    value={email}
+                                    onChange={handleFormChange}
+                                    error={!!emailError}
+                                    helperText={emailError || ''}
+                                    fullWidth
+                                    InputProps={{
+                                        startAdornment: (
+                                            <InputAdornment position="start">
+                                                <EmailOutlined sx={{ color: "action.active" }} />
+                                            </InputAdornment>
+                                        )
+                                    }}
+                                />
+                                <Button type="submit" variant="contained" size="large" disabled={loading || isStepTransitioning}>
+                                    {loading ? <CircularProgress size={24} color="inherit" /> : "Send OTP"}
+                                </Button>
+
+                                {isStepTransitioning && (
+                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                                        <CircularProgress size={18} />
+                                        <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                                            OTP sent. Opening verification step...
+                                        </Typography>
+                                    </Box>
+                                )}
+
+                                <Button onClick={onBackToLogin} sx={{
+                                    color: theme.palette.primary.main,
+                                    fontWeight: "bold",
+                                    p: 0,
+                                    textAlign: "left",
+                                    mt: 1,
+                                    mb: 3,
+                                    fontSize: theme.typography.h6,
+                                    alignSelf: "flex-start",
+                                }}>
+                                    Sign in →
+                                </Button>
+                            </Box>
                     </Box>
 
                 </>
@@ -435,6 +452,12 @@ const ForgetPassword = () => {
                         <Typography sx={{ color: theme.palette.text.secondary, mb: 1, font: theme.typography.body2 }}>
                             Enter a new password for {email}
                         </Typography>
+
+                        {successMessage && (
+                            <Alert severity="success">
+                                {successMessage}
+                            </Alert>
+                        )}
 
                         {error && (
                             <Alert severity="error" onClose={clearError}>
