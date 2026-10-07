@@ -134,6 +134,7 @@ def upgrade() -> None:
     op.alter_column('User', 'is_active',
                existing_type=sa.VARCHAR(),
                type_=sa.Boolean(),
+               postgresql_using='is_active::boolean',
                existing_nullable=False)
     op.alter_column('User', 'updated_at',
                existing_type=postgresql.TIMESTAMP(timezone=True),
@@ -162,6 +163,7 @@ def downgrade() -> None:
     op.alter_column('User', 'is_active',
                existing_type=sa.Boolean(),
                type_=sa.VARCHAR(),
+               postgresql_using='is_active::varchar',
                existing_nullable=False)
     op.alter_column('TimeSlot', 'end_time',
                existing_type=postgresql.TIME(),

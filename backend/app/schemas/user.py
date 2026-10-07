@@ -20,6 +20,7 @@ class UserRegisterRequest(BaseModel):
     profile_image_url: Optional[str] = ""
     date_of_birth: date
 
+
 class LoginRequest(BaseModel):
     """
     LoginRequest model representing the data required for user login.
@@ -76,7 +77,8 @@ class UserResponse(BaseModel):
     mobile_no: str
     profile_image_url: Optional[str]
     date_of_birth: Optional[date]
-    role: str 
+    user_type: str
+    sub: Optional[str]  # Optional field for Supabase user ID 
 
     # Enable parsing from ORM models
     model_config = ConfigDict(from_attributes=True) 

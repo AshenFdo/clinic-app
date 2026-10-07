@@ -36,7 +36,11 @@ _validate_database_url(DATABASE_URL)
 engine = create_async_engine(
     DATABASE_URL,
     echo=settings.DEBUG,
-    future=True
+    future=True,
+    # Supabase/PostgreSQL may close idle pooled connections. Validate a
+    # connection before checkout and recycle it before the server does.
+    pool_pre_ping=True,
+    pool_recycle=1800,
 )
 
 AsyncSessionLocal = async_sessionmaker(

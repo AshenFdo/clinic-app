@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from gotrue import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
@@ -78,7 +80,7 @@ def require_role(*roles: str):
     Enforce allowed roles on a route.
 
     Usage:
-    Depends(require_role("Admin", "Doctor","Patient"))
+    Depends(require_role("Admin", "Doctor","Patient") or Guest)
     """
 
     # Normalize roles to lowercase and strip whitespaces 
@@ -97,5 +99,7 @@ def require_role(*roles: str):
 
         if user_role not in normalized_roles:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
+        if user_role == "guest" and current_user.guest_expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=403, detail="Guest access expired")
         return current_user
     return role_checker

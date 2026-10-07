@@ -19,15 +19,37 @@ _JWKS_CACHE_TTL_SECONDS = 300
 
 async def verify_supabase_token(token: str) -> dict:
     """
-    Verify a Supabase JWT access token using the JWKS endpoint.
-        - Fetch the JWKS keys from Supabase
-        - Use jose to decode and verify the token against the JWKS
+    Verify a Supabase JWT access token using its configured signing method.
+        - Verify HS256 tokens with the configured JWT secret
+        - Fetch JWKS keys from Supabase for ES256 tokens
+        - Use jose to decode and verify the token
         - Return the token payload if valid, or raise JWTError if invalid/expired.
     
     This function is used in the get_current_user dependency to authenticate API requests.
     """
 
-    # Construct the JWKS URL based on the Supabase project URL
+    try:
+        algorithm = jwt.get_unverified_header(token).get("alg")
+    except JWTError:
+        raise JWTError("Invalid token header")
+
+    if algorithm == "HS256":
+        key = settings.SUPABASE_JWT_SECRET
+    elif algorithm == "ES256":
+        key = await _get_supabase_jwks()
+    else:
+        raise JWTError("Unsupported token algorithm")
+
+    return jwt.decode(
+        token,
+        key,
+        algorithms=[algorithm],
+        audience="authenticated",
+    )
+
+
+async def _get_supabase_jwks() -> dict:
+    """Fetch and cache the public keys used by ES256 Supabase tokens."""
     jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
 
     # Reuse recently fetched keys to avoid a network call on every request.
@@ -59,14 +81,7 @@ async def verify_supabase_token(token: str) -> dict:
                 detail="Authentication provider unavailable",
             )
     
-    # Decode and verify token using JWKS (jose automatically selects the correct key by kid)
-    payload = jwt.decode(
-        token,
-        jwks,
-        algorithms=["ES256"], # Supabase uses ES256 for access tokens
-        audience="authenticated"  # Required by Supabase auth tokens
-    )
-    return payload
+    return jwks
 
 
 

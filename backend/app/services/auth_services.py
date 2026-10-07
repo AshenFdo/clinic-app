@@ -1,3 +1,5 @@
+import asyncio
+import httpx
 from supabase import create_client, Client
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -7,388 +9,276 @@ import uuid
 from fastapi import HTTPException
 from app.core.security import settings
 from app.models.user import User
-from app.models.doctor import Doctor
-from app.models.patient import Patient
-from app.schemas.user import UserRegisterRequest, LoginRequest, VerifyOTPRequest, ResetPasswordWithOTPRequest
-from app.schemas.doctor import DoctorRegisterRequest
+from app.schemas.user_auth import (
+    PatientAndAdminRegisterInput,
+    UserRegisterResponse,
+    UserResponse,
+    VerifyOTPRequest,
+    UserLoginRequest,
+    ResendOTPRequest,
+    GuestUserResponse
+)
+from app.services.util.__auth import _build_user_metadata, _add_patient_to_db
 
-# Utility function to get Supabase admin client
+
+# Get supabase client with service role key for admin access
 def get_supabase_admin() -> Client:
     """Service key gives admin access — can create users without email confirmation."""
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
 
-# ---------------------------------------------------------------
-# Functions for User registration process (shared by patients and doctors)
-# ---------------------------------------------------------------
-def _try_resend_signup_otp(supabase: Client, email: str) -> None:
-    """ 
-    Internal: Attempt to resend signup OTP silently during registration.
-    Used when user registers with existing unverified email or needs OTP retry.
-    Silently swallows errors to avoid failing the registration flow.
+# ============================
+# User Signup function
+# =================================
+def user_signup(body: PatientAndAdminRegisterInput):
+    """
+    - Handles User signup by creating a new user in Supabase Auth
+    - sending a verification code to the user's email.
+    - "Path: /auth/register-patient", /auth/register-admin, /auth/register-doctor
     """
     try:
-        supabase.auth.resend({
-            "type": "signup",
-            "email": email,
-        })
-    except Exception:
-        # Avoid failing registration if resend is unavailable or SMTP is not configured.
-        pass
+        supabase_client = get_supabase_admin()
+        # Validate input data
+        if not body.email or not body.password:
+            raise HTTPException(status_code=400, detail="Email and password are required")
 
-# Helper function to ensure patient profile exists during patient registration
-async def _ensure_patient_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
-    """
-    Ensure that a Patient profile exists for the given user_id.
-    """
-    existing_patient = await db.scalar(
-        select(Patient).where(Patient.patient_id == user_id)
-    )
-    if existing_patient:
-        return
+        # Validate user_type
+        if body.user_type not in ["patient", "doctor", "admin"]:
+            raise HTTPException(status_code=400, detail="Invalid user type")
 
-    patient_number = f"PAT-{str(user_id)[:8].upper()}"
-    db.add(
-        Patient(
-            patient_id=user_id,
-            patient_number=patient_number,
-        )
-    )
+        #Validate password Length
+        if len(body.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
 
-# helper function to ensure doctor profile exists during doctor registration
-async def _ensure_doctor_profile(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    specialty: str,
-    professional_bio: str,
-    years_of_experience: int,
-) -> None:
-    """Ensure that a Doctor profile exists for the given user_id."""
-    existing_doctor = await db.scalar(
-        select(Doctor).where(Doctor.doctor_id == user_id)
-    )
-    if existing_doctor:
-        return
-
-    db.add(
-        Doctor(
-            doctor_id=user_id,
-            specialty=specialty,
-            professional_bio=professional_bio,
-            years_of_experience=years_of_experience,
-        )
-    )
-
-# Helper function to build user metadata for Supabase Auth
-def _build_user_metadata(data: UserRegisterRequest, role: str) -> dict:
-    """
-    Formats user metadata for Supabase Auth based on the registration data and role.
-    """
-    return {
-        "full_name": data.full_name,
-        "role": role,
-        "gender": data.gender,
-        "mobile_no": data.mobile_no,
-        "date_of_birth": str(data.date_of_birth),
-        "profile_image_url": data.profile_image_url or "",
-    }
-
-# Shared registration flow for patients and doctors and admin (with role-specific profile creation via callback)
-async def _register_user_with_role(
-    data: UserRegisterRequest,
-    db: AsyncSession,
-    role: str,
-    ensure_profile: Callable[[AsyncSession, uuid.UUID], Awaitable[None]],
-) -> User:
-    """
-    Shared user registration flow for both patients and doctors.
-    - Checks for existing user by email and handles unverified accounts.
-    - Creates user in Supabase Auth and local database.
-    - Calls ensure_profile callback to create role-specific profile data.
-    """
-
-    # Validate if a user with the same email already exists in the local database
-    existing_user_by_email = await db.scalar(
-        select(User).where(User.email == data.email)
-    )
-
-    if existing_user_by_email:
-        if not existing_user_by_email.is_active:
-            _try_resend_signup_otp(get_supabase_admin(), existing_user_by_email.email)
-        await ensure_profile(db, existing_user_by_email.user_id)
-        await db.commit()
-        return existing_user_by_email
-
-    # Define supabase client and initialize variable to track created user ID for potential cleanup
-    supabase = get_supabase_admin()
-    supabase_uid = None
-
-    try:
-        # Create user in Supabase Auth with the provided email and password
-        auth_response = supabase.auth.admin.create_user({
-            "email": data.email,
-            "password": data.password,
-            "email_confirm": False,
-            "user_metadata": _build_user_metadata(data, role),
+        # Create user in Supabase Auth
+        response =  supabase_client.auth.sign_up({
+            "email": body.email,
+            "password": body.password,
+            "options": {
+                "data": _build_user_metadata(body)
+            }
         })
 
-        # Validate that the user was created successfully in Supabase Auth and extract the user ID
-        if not auth_response or not auth_response.user or not auth_response.user.id:
-            raise ValueError("Unable to create user in Supabase Auth")
-
-        supabase_uid = uuid.UUID(str(auth_response.user.id))
-        # Send OTP email for email verification. Supabase does not automatically send OTP for admin-created users.
-        _try_resend_signup_otp(supabase, data.email)
-
-        
-        existing_user_by_id = await db.scalar(
-            select(User).where(User.user_id == supabase_uid)
-        )
-        if existing_user_by_id:
-            await ensure_profile(db, existing_user_by_id.user_id)
-            await db.commit()
-            return existing_user_by_id
-
-        # Add the new user to the local database with is_active=False until they verify their email
-        new_user = User(
-            user_id=supabase_uid,
-            full_name=data.full_name,
-            email=data.email,
-            gender=data.gender,
-            mobile_no=data.mobile_no,
-            date_of_birth=data.date_of_birth,
-            profile_image_url=data.profile_image_url,
-            role=role,
-            is_active=False,
-        )
-        db.add(new_user)
-        await ensure_profile(db, supabase_uid)
-
-        await db.commit()
-        await db.refresh(new_user)
-        return new_user
-    except IntegrityError as exc:
-        await db.rollback()
-
-        if supabase_uid is not None:
-            existing_user = await db.scalar(
-                select(User).where(User.user_id == supabase_uid)
-            )
-            if existing_user:
-                await ensure_profile(db, existing_user.user_id)
-                await db.commit()
-                return existing_user
-
-        existing_by_email = await db.scalar(
-            select(User).where(User.email == data.email)
-        )
-        if existing_by_email:
-            await ensure_profile(db, existing_by_email.user_id)
-            await db.commit()
-            return existing_by_email
-
-        raise ValueError("Account already exists. Please verify your email or log in.") from exc
-    except Exception:
-        await db.rollback()
-        if supabase_uid is not None:
-            try:
-                supabase.auth.admin.delete_user(str(supabase_uid))
-            except Exception:
-                pass
-        raise
-# Admin registration (Admin-only)
-async def register_admin(data: UserRegisterRequest, db: AsyncSession) -> User:
-    """ Register an admin user"""
-    async def no_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
-        """Admin users don't need an additional profile."""
-        pass
-    
-    return await _register_user_with_role(
-            data=data,
-            db=db,
-            role="Admin",
-            ensure_profile=no_profile,
-        )
-# Patient registration (open to public)
-async def register_patient(data: UserRegisterRequest, db: AsyncSession) -> User:
-    """Register a patient by reusing the shared user registration flow."""
-    return await _register_user_with_role(
-        data=data,
-        db=db,
-        role="Patient",
-        ensure_profile=_ensure_patient_profile,
-    )
-# Doctor registration (Admin-only)
-async def register_doctor(data: DoctorRegisterRequest, db: AsyncSession) -> User:
-    """Register a doctor by reusing the shared user registration flow."""
-    async def ensure_doctor(db_session: AsyncSession, user_id: uuid.UUID) -> None:
-        await _ensure_doctor_profile(
-            db=db_session,
-            user_id=user_id,
-            specialty=data.specialty,
-            professional_bio=data.professional_bio,
-            years_of_experience=data.years_of_experience,
-        )
-
-    return await _register_user_with_role(
-        data=data.userData,
-        db=db,
-        role="Doctor",
-        ensure_profile=ensure_doctor,
-    )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-# ---------------------------------------------------------------
-# Functions for OTP verification and resend
-# ---------------------------------------------------------------
-async def verify_otp(data: VerifyOTPRequest) -> str:
+    if response.user and not response.user.identities:
+        raise HTTPException(status_code=400, detail="User already exists or email not confirmed")
+
+    return {"message": "Verification code sent to your email", "user_metadata": response.user.user_metadata}
+
+
+# ===========================
+## Verify Signup OTP function
+# ===========================
+async def verify_signup_otp(data:VerifyOTPRequest, db: AsyncSession):
     """
-    - Verify the OTP submitted by the user after signup.
-    - Calls Supabase Auth to validate the token sent to their email.
-    - Returns a JWT access token when verification succeeds.
-    
-    Note: Caller is responsible for updating local User.is_active after successful verification.
+    - Verifies the signup OTP sent to the user's email.
+    - If the OTP is valid, it creates a new user in the local database.
+    - Returns the newly created user and access token.
+    - Path: /auth/verify-otp
     """
+    token = data.otp.strip()
+    if not token:
+        raise ValueError("OTP is required")
+
     supabase = get_supabase_admin()
     try:
-        response = supabase.auth.verify_otp({
-            "email": data.email,
-            "token": data.otp,
-            "type": "signup"
-        })
+       response = await asyncio.to_thread(
+                   supabase.auth.verify_otp,
+                   {
+                       "email": str(data.email),
+                       "token": token,
+                       "type": "email",
+                   },
+               )
     except Exception as exc:
         raise ValueError("Invalid or expired OTP") from exc
-
-    if not response or not response.user:
-        raise ValueError("Invalid or expired OTP")
-
-    if not response.session or not response.session.access_token:
-        raise ValueError("Verification succeeded but no session was created")
-
-    return response.session.access_token
+       
+    if not response or not getattr(response, "user", None):
+        raise ValueError("User not found or invalid OTP")
 
 
-async def resend_signup_otp(email: str) -> bool:
+    session = getattr(response, "session", None)
+    access_token = getattr(session, "access_token", None)
+    user = getattr(response, "user", None)
+
+    meta = user.user_metadata
+
+    user_data:UserRegisterResponse = UserRegisterResponse(
+        user_id= user.id,
+        full_name=meta.get("full_name"),
+        email=meta.get("email"),
+        gender=meta.get("gender"),
+        mobile_no=meta.get("mobile_no"),
+        profile_image_url=meta.get("profile_image_url"),
+        date_of_birth=meta.get("date_of_birth"),
+        user_type=meta.get("user_type"),
+        is_active=True,
+    )
+    if user_data.user_type == "patient":
+        # Add the patient to the database
+        new_user = await _add_patient_to_db(user_data, db)
+    elif user_data.user_type == "admin":
+        # Admin functionality can be added here if needed
+        pass
+    elif user_data.user_type == "doctor":
+        # Doctor functionality can be added here if needed
+        pass
+
+    return new_user, access_token
+
+# ============================
+## Resend Signup OTP function
+# ============================
+
+def resend_signup_otp(data: ResendOTPRequest):
     """
-    - Public API: Resend OTP email for unverified users.
-    - Called explicitly by frontend when user requests OTP retry.
+    - Resends the signup OTP to the user's email.
+    - Path: /auth/resend-otp
     """
     supabase = get_supabase_admin()
+
     try:
         supabase.auth.resend({
-            "type": "signup",
-            "email": email,
+        "type":"signup",
+        "email":data.email,
         })
-    except Exception as exc:
-        error_text = str(exc).lower()
+
+        return {"message":"New otp sent to the email."}
+
+    except HTTPException as e:
+        error_text = str(e.detail) if hasattr(e, "detail") else str(e)
         if "email rate limit exceeded" in error_text or "rate limit" in error_text:
-            raise ValueError("Too many OTP requests. Please wait before trying again.") from exc
-        raise ValueError("Unable to resend OTP right now. Please try again.") from exc
-    return True
+             raise ValueError("Too many OTP requests. Please wait before trying again.") from e
+        raise ValueError("Unable to resend OTP right now. Please try again.") from e
+    
 
-
-# ---------------------------------------------------------------
-# Functions for login/logout process
-# ---------------------------------------------------------------
-async def login_user(data: LoginRequest) -> str:
+# ===========================
+# Login function
+# ===========================
+def user_login(data: UserLoginRequest):
     """
-    - Server-side login (optional). Client can also use Supabase JS SDK directly.
-    - Returns JWT access token on successful login.
+    - Handles User login by authenticating the user with Supabase Auth.
+    - Returns the access token and user metadata if successful.
+    - Path: /auth/login (applies for all user types: patient, doctor, admin)
     """
     supabase = get_supabase_admin()
 
     try:
-        response = supabase.auth.sign_in_with_password({"email": data.email, "password": data.password})
-    except Exception as exc:
-        error_text = str(exc).lower()
-        if "email not confirmed" in error_text or "email not verified" in error_text:
-            raise ValueError("Email is not verified. Please verify your email before login.") from exc
-        if "invalid login credentials" in error_text or "invalid credentials" in error_text:
-            raise ValueError("Invalid email or password") from exc
-        raise ValueError("Login failed. Please try again.") from exc
-
-    if not response.session or not response.session.access_token:
-        raise ValueError("Invalid email or password")
-
-    # Supabase marks verified emails with email_confirmed_at timestamp.
-    if not getattr(response.user, "email_confirmed_at", None):
-        raise ValueError("Email is not verified. Please verify your email before login.")
-
-    return response.session.access_token
-
-async def logout_user(current_user: User):
-    """
-    Revoke the user's session server-side.
-    Client MUST also call supabase.auth.signOut() to clear the local token.
-    """
-    supabase = get_supabase_admin()
-    try:
-        # admin method — takes user_id, revokes all sessions for that user
-        supabase.auth.admin.sign_out(str(current_user.user_id))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Logout failed")
-
-    return {"message": "Logged out successfully"}
-
-
-# ---------------------------------------------------------------
-# Function for forgot password
-# --------------------------------------------------------------
-async def forgot_password(email: str) -> bool:
-    """
-    Send a password reset OTP to the user's email.
-    """
-    supabase = get_supabase_admin()
-    try:
-        redirect_url = getattr(settings, "PASSWORD_RESET_REDIRECT_URL", None)
-        if redirect_url:
-            supabase.auth.reset_password_for_email(email, {"redirectTo": redirect_url})
-        else:
-            # Fall back to Supabase project default SITE_URL when redirect isn't configured.
-            supabase.auth.reset_password_for_email(email)
-    except Exception as exc:
-        error_text = str(exc).lower()
-        if "email not found" in error_text or "user not found" in error_text:
-            raise ValueError("No account found with that email address.") from exc
-        raise ValueError("Unable to send password reset email right now. Please try again.") from exc
-    return True
-
-
-async def reset_password_with_otp(data: ResetPasswordWithOTPRequest) -> bool:
-    """
-    Validate password reset OTP and update the user's password.
-    """
-    supabase = get_supabase_admin()
-    otp = data.otp.strip()
-
-    try:
-        verify_response = supabase.auth.verify_otp({
+        response = supabase.auth.sign_in_with_password({
             "email": data.email,
-            "token": otp,
-            "type": "recovery",
+            "password": data.password
         })
-    except Exception as exc:
-        raise ValueError(f"Invalid or expired reset OTP: {str(exc)}") from exc
 
-    if not verify_response or not verify_response.user or not verify_response.user.id:
-        raise ValueError("Invalid or expired reset OTP")
+        if not response.user:
+            raise ValueError("Invalid email or password")
 
-    if (
-        not verify_response.session
-        or not verify_response.session.access_token
-        or not verify_response.session.refresh_token
-    ):
-        raise ValueError("Recovery session is missing. Please request a new reset OTP.")
+        session = getattr(response, "session", None)
+        access_token = getattr(session, "access_token", None)
+        user_metadata = getattr(response.user, "user_metadata", None)
+
+        return {"access_token": access_token, "user_metadata": user_metadata}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ============================
+# Refresh Token function
+# ============================
+def refresh_token(refresh_token: str):
+    """
+    - Handles token refresh by exchanging the refresh token for a new access token.
+    """
+    supabase = get_supabase_admin()
 
     try:
-        # Recovery OTP verification creates a short-lived user session.
-        # Use that session to update the password as the authenticated user.
-        supabase.auth.set_session(
-            verify_response.session.access_token,
-            verify_response.session.refresh_token,
-        )
-        supabase.auth.update_user({"password": data.new_password})
-    except Exception as exc:
-        raise ValueError(f"Unable to reset password: {str(exc)}") from exc
+        response = supabase.auth.refresh_session(refresh_token)
+        if not response.session:
+            raise ValueError("Invalid refresh token")
 
-    return True
+        new_access_token = getattr(response.session, "access_token", None)
+        return {"access_token": new_access_token}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ============================
+# Logout function
+# ============================
+async def user_logout(current_user: User, access_token: str):
+    """
+    - Handles User logout by revoking the current access token in Supabase Auth.
+    - Path: /auth/logout
+    """
+    if not current_user or not current_user.user_id:
+        raise HTTPException(status_code=401, detail="User is not authenticated")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Access token is required")
+
+    logout_url = f"{settings.SUPABASE_URL}/auth/v1/logout"
+    headers = {
+        "apikey": settings.SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {access_token}",
+    }
+
+    try:
+        timeout = httpx.Timeout(connect=10.0, read=10.0, write=10.0, pool=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(logout_url, headers=headers)
+        response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication provider timeout",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=401 if exc.response.status_code == 401 else 502,
+            detail="Could not log out from authentication provider",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication provider unavailable",
+        ) from exc
+
+    return {"message": "User logged out successfully"}
+
+
+# ===========================
+# Create Guest User function
+# ===========================
+def create_guest_user(data: GuestUserResponse):
+    """
+    - Creates a guest user with the provided name, gender, and age.
+    - Returns the guest user data.
+    """
+    try:
+        supabase = get_supabase_admin()
+
+
+        response = supabase.auth.sign_in_anonymously(
+            {"options": {"data": data.model_dump()}}
+        )
+        session = getattr(response, "session", None)
+        access_token = getattr(session, "access_token", None)
+        if not access_token:
+            raise ValueError("Failed to create guest user: no access token")
+
+        user = getattr(response, "user", None)
+        user_metadata = getattr(user, "user_metadata", None)
+        return {
+            "message": "Guest user created successfully",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "guest_user": {
+                "user_id": getattr(user, "id", None),
+                "metadata": user_metadata or data.model_dump(),
+            },
+        }
+
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

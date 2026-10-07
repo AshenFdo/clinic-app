@@ -1,166 +1,119 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.core.dependencies import bearer_scheme
 from app.models.user import User
 from app.core.dependencies import get_current_user
-from app.schemas.user import (
-    UserRegisterRequest,
+from app.schemas.user_auth import (
+    PatientAndAdminRegisterInput,
+    UserRegisterResponse,
     UserResponse,
-    ResendOTPRequest,
-    LoginRequest,
     VerifyOTPRequest,
-    ForgotPasswordRequest,
-    ResetPasswordWithOTPRequest,
+    UserLoginRequest,
+    ResendOTPRequest,
+    GuestUserResponse
 )
-from app.schemas.doctor import DoctorRegisterRequest
-from app.services.auth_services import (register_patient,
-                                        register_doctor, 
-                                        verify_otp,
-                                        resend_signup_otp, 
-                                        login_user,logout_user,
-                                        register_admin,
-                                        forgot_password,
-                                        reset_password_with_otp)
-
-# Define the API router for authentication-related endpoints
+from app.services.auth_services import (
+    user_signup, 
+    verify_signup_otp,
+    resend_signup_otp,
+    user_login,
+    user_logout,
+    refresh_token,
+    create_guest_user as create_guest_user_service,
+)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# -------------------------------
-# Patient Registration API Endpoint
-# -------------------------------
-@router.post("/register-patient", response_model=UserResponse)
-async def register(data: UserRegisterRequest, db: AsyncSession = Depends(get_db)):
+# ======================================
+# Signup router
+# =====================================
+
+# Register patient  endpoint
+@router.post("/register-patient") 
+async def register_patient(data:PatientAndAdminRegisterInput):
     """Patient self-registration. Triggers signup OTP through Supabase Auth."""
     try:
-        user = await register_patient(data, db)
-        return user
+        results = user_signup(data)
+        return results
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --------------------------------
-# Doctor Registration API Endpoint
-# --------------------------------
-@router.post("/register-doctor", response_model=UserResponse)
-async def register_doctor_route(data: DoctorRegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Doctor registration. Reuses shared auth flow and creates Doctor profile data."""
-    try:
-        user = await register_doctor(data, db)
-        return user
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# Register admin endpoint
 
+# Register doctor endpoint
 
-# --------------------------------
-# Admin Registration API Endpoint
-# --------------------------------
-@router.post("/register-admin", response_model=UserResponse)
-async def register_admin_route(data: UserRegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Admin registration. Reuses shared auth flow and creates Admin profile data."""
-    try:
-        user = await register_admin(data, db)
-        return user
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# -------------------------------
-# OTP Verification API Endpoint
-# -------------------------------
+# ======================================
+# Verify OTP router
+# ======================================
 @router.post("/verify-otp")
-async def verify(data: VerifyOTPRequest, db: AsyncSession = Depends(get_db)):
-    """Verify signup OTP and activate the local user account."""
+async def verify_otp(data: VerifyOTPRequest, db: AsyncSession = Depends(get_db)):
+    """Verify the signup OTP sent to the user's email."""
     try:
-        access_token = await verify_otp(data)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        results = await verify_signup_otp(data, db)
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    user = await db.scalar(select(User).where(User.email == data.email))
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Keep local user state aligned with Supabase email verification.
-    user.is_active = True
-    await db.commit()
-    await db.refresh(user)
-    return {
-        "message": "Email verified. You can now log in.",
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": UserResponse.model_validate(user),
-    }
-
-# -------------------------------
-# Resend OTP API Endpoint
-# -------------------------------
+# ======================================
+# Resend OTP router
+# ======================================
 @router.post("/resend-otp")
 async def resend_otp(data: ResendOTPRequest):
-    """Resend signup OTP to the user's email."""
+    """Resend the signup OTP to the user's email."""
     try:
-        await resend_signup_otp(data.email)
-        return {"message": "OTP resent successfully."}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        results = resend_signup_otp(data)
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-# -------------------------------
-# Login API Endpoint
-# -------------------------------
+# ======================================
+# User login router
+# ======================================
 @router.post("/login")
-async def login(data: LoginRequest):
-    """
-    Optional server-side login endpoint.
-    Returns a Supabase JWT access token for valid credentials.
-    """
+async def login(data: UserLoginRequest):
+    """User login endpoint. apply for all user types (patient, doctor, admin)"""
     try:
-        token = await login_user(data=data)
-        return {
-            "access_token": token,
-            "token_type": "bearer"
-        }
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    
+        results = user_login(data)
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-# -------------------------------
-# Logout API Endpoint
-# -------------------------------
+# ======================================
+# User logout router
+# ======================================
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
-    """
-    Logout endpoint to revoke the user's session server-side.
-    Client MUST also call supabase.auth.signOut() to clear the local token.
-    """
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    current_user: User = Depends(get_current_user),
+):
+    """User logout endpoint."""
     try:
-        return await logout_user(current_user)
-    except HTTPException as exc:
-        raise exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Logout failed") from exc
+        results = await user_logout(current_user, credentials.credentials)
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-
-# -------------------------------
-# Forgot Password API Endpoint
-# -------------------------------
-@router.post("/forgot-password")
-async def forgot_password_route(data: ForgotPasswordRequest):
-    """Send password reset OTP/email to the user."""
+# =====================================
+# Guest user creation router
+# =====================================
+@router.post("/create-guest-user")
+async def create_guest_user(data: GuestUserResponse):
     try:
-        await forgot_password(data.email)
-        return {"message": "Password reset OTP sent successfully."}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-# -------------------------------
-# Reset Password API Endpoint
-# -------------------------------
-@router.post("/reset-password")
-async def reset_password_route(data: ResetPasswordWithOTPRequest):
-    """Validate reset OTP and set the new password."""
-    try:
-        await reset_password_with_otp(data)
-        return {"message": "Password reset successful."}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    
+        results = create_guest_user_service(data)
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 

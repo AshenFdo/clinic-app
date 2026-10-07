@@ -18,9 +18,9 @@ class MedicalHistory(Base):
     """
     __tablename__ = "MedicalHistory"
 
-
-    patient_id = Column(UUID(as_uuid=True),ForeignKey("Patient.patient_id"), primary_key=True, nullable=False)
-    appointment_id = Column(UUID(as_uuid=True), ForeignKey("Appointment.appointment_id"), primary_key=True, nullable=False)
+    history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(ForeignKey("Patient.patient_id"), primary_key=True, nullable=False)
+    appointment_id = Column(ForeignKey("Appointment.appointment_id"), unique=True, nullable=False)
     title = Column(String, nullable=False)
     diagnosis_notes = Column(String, nullable=False)
     health_status = Column(String, nullable=False)
