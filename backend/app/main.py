@@ -3,8 +3,6 @@
 from fastapi import FastAPI
 import app.models
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import user, doctor, timeslot, available_slots, patient,appointment
-from app.routers import _auth
 from app.routers import auth
 
 
@@ -22,14 +20,6 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
-
-# app.include_router(user.router)
-# app.include_router(_auth.router)
-# app.include_router(doctor.router)
-# app.include_router(timeslot.router)
-# app.include_router(available_slots.router)
-# app.include_router(patient.router)
-# app.include_router(appointment.router)
 
 app.include_router(auth.router) 
 

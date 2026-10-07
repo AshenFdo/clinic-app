@@ -23,7 +23,7 @@ from app.services.auth_services import (
     user_login,
     user_logout,
     refresh_token,
-    create_guest_user as create_guest_user_service,
+    create_guest_user,
 )
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -108,12 +108,15 @@ async def logout(
 # Guest user creation router
 # =====================================
 @router.post("/create-guest-user")
-async def create_guest_user(data: GuestUserResponse):
+async def create_guest_user_route(data: GuestUserResponse):
     try:
-        results = create_guest_user_service(data)
+        # Call the service function to create a guest user
+        results = create_guest_user(data)
         return results
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+    
