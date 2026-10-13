@@ -31,6 +31,8 @@ class UserRegisterResponse(BaseModel):
     is_active: bool
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: UUID
     full_name: str
     email: EmailStr
@@ -39,7 +41,7 @@ class UserResponse(BaseModel):
     profile_image_url: Optional[str]
     date_of_birth: Optional[date]
     user_type: str
-    sub: Optional[str]  # Optional field for Supabase user ID
+    sub: Optional[str] = None  # Optional field for Supabase user ID
 
 
 class VerifyOTPRequest(BaseModel):
@@ -54,6 +56,11 @@ class ResendOTPRequest(BaseModel):
 class UserLoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 
 class GuestUserResponse(BaseModel):
     name : str

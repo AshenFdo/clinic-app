@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_db
 from app.core.dependencies import bearer_scheme
 from app.models.user import User
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user as get_current_user_dependency
 from app.schemas.user_auth import (
     PatientAndAdminRegisterInput,
     UserRegisterResponse,
@@ -14,7 +14,8 @@ from app.schemas.user_auth import (
     VerifyOTPRequest,
     UserLoginRequest,
     ResendOTPRequest,
-    GuestUserResponse
+    GuestUserResponse,
+    RefreshTokenRequest,
 )
 from app.services.auth_services import (
     user_signup, 
@@ -32,7 +33,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # =====================================
 
 # Register patient  endpoint
-@router.post("/register-patient") 
+@router.post("/register")
 async def register_patient(data:PatientAndAdminRegisterInput):
     """Patient self-registration. Triggers signup OTP through Supabase Auth."""
     try:
@@ -93,7 +94,7 @@ async def login(data: UserLoginRequest):
 @router.post("/logout")
 async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_dependency),
 ):
     """User logout endpoint."""
     try:
@@ -119,4 +120,29 @@ async def create_guest_user_route(data: GuestUserResponse):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-    
+# =====================================
+# Refresh token router
+# =====================================
+@router.post("/refresh-token")
+async def refresh_token_route(
+    data: RefreshTokenRequest,
+):
+    """Refresh the access token using the refresh token."""
+    try:
+        results = refresh_token(data.refresh_token)
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+ # =====================================
+ # Get current user router
+ # =====================================
+@router.get("/current-user", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse, include_in_schema=False)
+async def get_current_user_route(
+    current_user: User = Depends(get_current_user_dependency),
+):
+    """Get the current logged-in user's information."""
+    return current_user

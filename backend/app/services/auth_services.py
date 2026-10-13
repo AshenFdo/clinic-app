@@ -102,9 +102,10 @@ async def verify_signup_otp(data:VerifyOTPRequest, db: AsyncSession):
 
     session = getattr(response, "session", None)
     access_token = getattr(session, "access_token", None)
+    refresh_token = getattr(session, "refresh_token", None)
     user = getattr(response, "user", None)
 
-    meta = user.user_metadata
+    meta = user.user_metadata or {}
 
     user_data:UserRegisterResponse = UserRegisterResponse(
         user_id= user.id,
@@ -119,15 +120,25 @@ async def verify_signup_otp(data:VerifyOTPRequest, db: AsyncSession):
     )
     if user_data.user_type == "patient":
         # Add the patient to the database
-        new_user = await _add_patient_to_db(user_data, db)
+        result = await _add_patient_to_db(user_data, db)
     elif user_data.user_type == "admin":
-        # Admin functionality can be added here if needed
-        pass
+        raise ValueError("Admin registration is not supported yet")
     elif user_data.user_type == "doctor":
-        # Doctor functionality can be added here if needed
-        pass
+        raise ValueError("Doctor registration is not supported yet")
+    else:
+        raise ValueError("Unsupported user type")
 
-    return new_user, access_token
+    if not access_token or not refresh_token:
+        raise ValueError("Authentication provider returned an incomplete session")
+
+    persisted_user = result["user"]
+    return {
+        "message": "Account verified successfully",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": persisted_user,
+    }
 
 # ============================
 ## Resend Signup OTP function
@@ -177,9 +188,29 @@ def user_login(data: UserLoginRequest):
 
         session = getattr(response, "session", None)
         access_token = getattr(session, "access_token", None)
+        refresh_token = getattr(session, "refresh_token", None)
         user_metadata = getattr(response.user, "user_metadata", None)
 
-        return {"access_token": access_token, "user_metadata": user_metadata}
+        if not access_token or not refresh_token:
+            raise ValueError("Authentication provider returned an incomplete session")
+
+        metadata = user_metadata or {}
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "user_id": response.user.id,
+                "full_name": metadata.get("full_name", ""),
+                "email": str(response.user.email or data.email),
+                "gender": metadata.get("gender", "other"),
+                "mobile_no": metadata.get("mobile_no", ""),
+                "profile_image_url": metadata.get("profile_image_url") or None,
+                "date_of_birth": metadata.get("date_of_birth"),
+                "user_type": metadata.get("user_type", "patient"),
+                "sub": response.user.id,
+            },
+        }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -194,12 +225,23 @@ def refresh_token(refresh_token: str):
     supabase = get_supabase_admin()
 
     try:
+        if not refresh_token.strip():
+            raise ValueError("Refresh token is required")
+
         response = supabase.auth.refresh_session(refresh_token)
         if not response.session:
             raise ValueError("Invalid refresh token")
 
         new_access_token = getattr(response.session, "access_token", None)
-        return {"access_token": new_access_token}
+        new_refresh_token = getattr(response.session, "refresh_token", None)
+        if not new_access_token or not new_refresh_token:
+            raise ValueError("Authentication provider returned an incomplete session")
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer",
+        }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -279,6 +321,33 @@ def create_guest_user(data: GuestUserResponse):
             },
         }
 
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+
+# ===========================
+# Get Current User function
+# ===========================
+def get_current_user(access_token: str):
+    """
+    - Retrieves the current user based on the provided access token.
+    - Returns the user data if the token is valid.
+    """
+    supabase = get_supabase_admin()
+
+    try:
+        response = supabase.auth.get_user(access_token)
+        user = getattr(response, "user", None)
+        if not user:
+            raise ValueError("Invalid access token")
+
+        user_metadata = getattr(user, "user_metadata", None)
+        return {
+            "user_id": getattr(user, "id", None),
+            "metadata": user_metadata,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
