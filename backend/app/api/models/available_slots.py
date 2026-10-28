@@ -2,7 +2,7 @@ from sqlalchemy import String, Integer, Numeric, Column, Date, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from sqlalchemy.orm import relationship
-from app.models.base import Base
+from .base import Base
 
 
 class AvailableSlots(Base):
@@ -28,6 +28,4 @@ class AvailableSlots(Base):
     doctor = relationship("Doctor", back_populates="available_slots")
     time_slot = relationship("TimeSlot", back_populates="available_slots")
     appointments = relationship("Appointment", back_populates="available_slots")
-
-
 

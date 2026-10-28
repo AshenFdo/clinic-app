@@ -2,7 +2,7 @@ from sqlalchemy import String, Column, Date, Time
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from app.models.base import Base
+from .base import Base
 
 
 class TimeSlot(Base):

@@ -5,10 +5,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import AsyncSessionLocal
+from .database import AsyncSessionLocal
 from jose import JWTError
-from app.core.security import verify_supabase_token
-from app.models.user import User
+from .security import verify_supabase_token
+from ..models.user import User
 
 
 # Define the HTTP Bearer scheme for token authentication

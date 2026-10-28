@@ -7,11 +7,11 @@ from sqlalchemy.exc import IntegrityError
 from typing import Awaitable, Callable
 import uuid
 from fastapi import HTTPException
-from app.core.security import settings
-from app.models.user import User
-from app.models.doctor import Doctor
-from app.models.patient import Patient
-from app.schemas.user_auth import PatientAndAdminRegisterInput,UserRegisterResponse,UserResponse
+from ...core.security import settings
+from ...models.user import User
+from ...models.doctor import Doctor
+from ...models.patient import Patient
+from ...schemas.user_auth import PatientAndAdminRegisterInput,UserRegisterResponse,UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,6 @@ async def _add_patient_to_db(
         "user": new_user,
         "patient": new_patient,
     }
-
 
 
 

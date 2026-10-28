@@ -5,11 +5,11 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_db
-from app.core.dependencies import bearer_scheme
-from app.models.user import User
-from app.core.dependencies import get_current_user as get_current_user_dependency
-from app.schemas.user_auth import (
+from ..core.dependencies import get_db
+from ..core.dependencies import bearer_scheme
+from ..models.user import User
+from ..core.dependencies import get_current_user as get_current_user_dependency
+from ..schemas.user_auth import (
     PatientAndAdminRegisterInput,
     UserRegisterResponse,
     UserResponse,
@@ -19,7 +19,7 @@ from app.schemas.user_auth import (
     GuestUserRequest,
     RefreshTokenRequest,
 )
-from app.services.auth_services import (
+from ..services.auth_services import (
     user_signup, 
     verify_signup_otp,
     resend_signup_otp,

@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from typing import Awaitable, Callable
 import uuid
 from fastapi import HTTPException
-from app.core.security import settings
-from app.models.user import User
-from app.schemas.user_auth import (
+from ..core.security import settings
+from ..models.user import User
+from ..schemas.user_auth import (
     PatientAndAdminRegisterInput,
     UserRegisterResponse,
     UserResponse,
@@ -18,7 +18,7 @@ from app.schemas.user_auth import (
     ResendOTPRequest,
     GuestUserRequest
 )
-from app.services.util.__auth import _build_user_metadata, _add_patient_to_db
+from .util.__auth import _build_user_metadata, _add_patient_to_db
 
 
 # Get supabase client with service role key for admin access

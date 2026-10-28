@@ -11,17 +11,17 @@ load_dotenv()
 
 # Import your Base and ALL models (every model must be imported here
 # so Alembic can see them and detect changes)
-from app.models.base import Base
-from app.models.user import User
-from app.models.appointment import Appointment
-from app.models.available_slots import AvailableSlots
-from app.models.doctor import Doctor
-from app.models.medi_history import MedicalHistory
-from app.models.medicine import Medicine
-from app.models.patient import Patient
-from app.models.prescription_item import PrescriptionItem
-from app.models.prescription import Prescription
-from app.models.timeslot import TimeSlot
+from app.api.models.base import Base
+from app.api.models.user import User
+from app.api.models.appointment import Appointment
+from app.api.models.available_slots import AvailableSlots
+from app.api.models.doctor import Doctor
+from app.api.models.medi_history import MedicalHistory
+from app.api.models.medicine import Medicine
+from app.api.models.patient import Patient
+from app.api.models.prescription_item import PrescriptionItem
+from app.api.models.prescription import Prescription
+from app.api.models.timeslot import TimeSlot
 
 # later you'll add: from app.models.doctor import Doctor  etc.
 
