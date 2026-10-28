@@ -36,3 +36,16 @@ export interface LoginPayload {
     email: string;
     password: string;
 }
+
+export interface GuestUser {
+  full_name: string;
+  gender: "male" | "female" | "other";
+  age: number;
+}
+
+export interface GuestUserResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: "bearer";
+  user: User;
+}

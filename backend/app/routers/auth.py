@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -14,7 +16,7 @@ from app.schemas.user_auth import (
     VerifyOTPRequest,
     UserLoginRequest,
     ResendOTPRequest,
-    GuestUserResponse,
+    GuestUserRequest,
     RefreshTokenRequest,
 )
 from app.services.auth_services import (
@@ -81,8 +83,18 @@ async def resend_otp(data: ResendOTPRequest):
 async def login(data: UserLoginRequest):
     """User login endpoint. apply for all user types (patient, doctor, admin)"""
     try:
-        results = user_login(data)
+        # supabase-py uses a synchronous HTTP client. Keep it off the
+        # event loop so a slow provider request cannot block later logins.
+        results = await asyncio.wait_for(
+            asyncio.to_thread(user_login, data),
+            timeout=30,
+        )
         return results
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication provider timeout",
+        ) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -94,11 +106,10 @@ async def login(data: UserLoginRequest):
 @router.post("/logout")
 async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    current_user: User = Depends(get_current_user_dependency),
 ):
     """User logout endpoint."""
     try:
-        results = await user_logout(current_user, credentials.credentials)
+        results = await user_logout(credentials.credentials)
         return results
     except HTTPException:
         raise
@@ -109,7 +120,7 @@ async def logout(
 # Guest user creation router
 # =====================================
 @router.post("/create-guest-user")
-async def create_guest_user_route(data: GuestUserResponse):
+async def create_guest_user_route(data: GuestUserRequest):
     try:
         # Call the service function to create a guest user
         results = create_guest_user(data)

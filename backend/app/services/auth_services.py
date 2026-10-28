@@ -16,7 +16,7 @@ from app.schemas.user_auth import (
     VerifyOTPRequest,
     UserLoginRequest,
     ResendOTPRequest,
-    GuestUserResponse
+    GuestUserRequest
 )
 from app.services.util.__auth import _build_user_metadata, _add_patient_to_db
 
@@ -178,7 +178,7 @@ def user_login(data: UserLoginRequest):
     supabase = get_supabase_admin()
 
     try:
-        response = supabase.auth.sign_in_with_password({
+        response =  supabase.auth.sign_in_with_password({
             "email": data.email,
             "password": data.password
         })
@@ -212,6 +212,11 @@ def user_login(data: UserLoginRequest):
             },
         }
 
+    except httpx.TimeoutException as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication provider timeout",
+        ) from e
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -249,15 +254,15 @@ def refresh_token(refresh_token: str):
 # ============================
 # Logout function
 # ============================
-async def user_logout(current_user: User, access_token: str):
+async def user_logout(access_token: str):
     """
     - Handles User logout by revoking the current access token in Supabase Auth.
     - Path: /auth/logout
     """
-    if not current_user or not current_user.user_id:
-        raise HTTPException(status_code=401, detail="User is not authenticated")
     if not access_token:
         raise HTTPException(status_code=401, detail="Access token is required")
+
+
 
     logout_url = f"{settings.SUPABASE_URL}/auth/v1/logout"
     headers = {
@@ -276,8 +281,12 @@ async def user_logout(current_user: User, access_token: str):
             detail="Authentication provider timeout",
         ) from exc
     except httpx.HTTPStatusError as exc:
+        # Guest tokens may already be expired or revoked. Logout is
+        # idempotent, so treat that provider response as a successful logout.
+        if exc.response.status_code == 401:
+            return {"message": "User logged out successfully"}
         raise HTTPException(
-            status_code=401 if exc.response.status_code == 401 else 502,
+            status_code=502,
             detail="Could not log out from authentication provider",
         ) from exc
     except httpx.HTTPError as exc:
@@ -292,7 +301,7 @@ async def user_logout(current_user: User, access_token: str):
 # ===========================
 # Create Guest User function
 # ===========================
-def create_guest_user(data: GuestUserResponse):
+def create_guest_user(data: GuestUserRequest):
     """
     - Creates a guest user with the provided name, gender, and age.
     - Returns the guest user data.
@@ -306,18 +315,28 @@ def create_guest_user(data: GuestUserResponse):
         )
         session = getattr(response, "session", None)
         access_token = getattr(session, "access_token", None)
-        if not access_token:
-            raise ValueError("Failed to create guest user: no access token")
+        refresh_token = getattr(session, "refresh_token", None)
+        if not access_token or not refresh_token:
+            raise ValueError("Failed to create guest user: incomplete session")
 
         user = getattr(response, "user", None)
-        user_metadata = getattr(user, "user_metadata", None)
+        if not user:
+            raise ValueError("Failed to create guest user")
+        user_metadata = getattr(user, "user_metadata", None) or data.model_dump()
+        user_id = getattr(user, "id", None)
         return {
             "message": "Guest user created successfully",
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
-            "guest_user": {
-                "user_id": getattr(user, "id", None),
-                "metadata": user_metadata or data.model_dump(),
+            "user": {
+                "user_id": user_id,
+                "full_name": user_metadata.get("full_name", data.full_name),
+                "email": getattr(user, "email", None) or f"guest-{user_id}@guest.local",
+                "gender": user_metadata.get("gender", data.gender),
+                "age": user_metadata.get("age", data.age),
+                "user_type": "guest",
+                "sub": user_id,
             },
         }
 

@@ -1,5 +1,13 @@
 import { api } from "./client";
-import { type User, type AuthResponse, type RegisterPayload, type LoginPayload, type RegisterResponse } from "../types/auth.ts";
+import {
+    type User,
+    type GuestUser,
+    type AuthResponse,
+    type GuestUserResponse,
+    type RegisterPayload,
+    type LoginPayload,
+    type RegisterResponse
+} from "../types/auth.ts";
 import { tokenStorage } from "../utils/tokenStorage";
 
 
@@ -17,5 +25,6 @@ export const authApi = {
         ).then(r => r.data);
     },
     logout: () => api.post("/auth/logout"),
+    createGuest: (data:GuestUser) => api.post<GuestUserResponse>("/auth/create-guest-user", data).then(r => r.data),
     me: () => api.get<User>("/auth/current-user").then(r => r.data)
 }

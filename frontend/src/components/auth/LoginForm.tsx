@@ -40,6 +40,7 @@ export default function LoginForm() {
 
         try {
             await login(data);
+            console.log("Login successful");
             navigate("/", { replace: true });
         } catch (error) {
             const message =
@@ -56,6 +57,7 @@ export default function LoginForm() {
                     ? error.response.data.detail
                     : "Unable to sign in. Please check your credentials and try again.";
             setServerError(message);
+            console.error("Login error:", message, error);
         }
     };
 
